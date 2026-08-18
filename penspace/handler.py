@@ -32,17 +32,54 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-import runpod
-
-from .config import Config
-from .runner import Runner, SummaryJob, prepare_clone
-from .storage import S3Storage
-
 logging.basicConfig(
     level=os.environ.get("PENSPACE_LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 log = logging.getLogger("penspace.handler")
+
+# Imports, guarded and logged.
+#
+# These pull in torch, the Qwen runtime and the RunPod SDK, and any of them can
+# fail in ways that kill the process before a single useful line is written —
+# a CUDA architecture the wheels have no kernels for will abort rather than
+# raise. RunPod then reports a bare "worker exited with exit code 1", which is
+# indistinguishable from a missing package, a bad build, or an OOM.
+#
+# Naming the failing import and re-raising costs nothing and turns a silent
+# crash-loop into one log line that says what to fix.
+try:
+    import runpod
+
+    from .config import Config
+    from .runner import Runner, SummaryJob, prepare_clone
+    from .storage import S3Storage
+except BaseException as exc:  # noqa: BLE001 — includes SystemExit/abort paths
+    log.critical(
+        "IMPORT FAILED: %s: %s\n%s",
+        type(exc).__name__,
+        exc,
+        traceback.format_exc(),
+    )
+    raise
+
+# A CUDA mismatch usually surfaces the moment a device is touched, not at
+# import, so probe it here where the result can still be logged.
+try:
+    import torch
+
+    if torch.cuda.is_available():
+        log.info(
+            "GPU: %s (capability %s), torch %s, cuda %s",
+            torch.cuda.get_device_name(0),
+            ".".join(map(str, torch.cuda.get_device_capability(0))),
+            torch.__version__,
+            torch.version.cuda,
+        )
+    else:
+        log.warning("No CUDA device visible — the render will fall back to CPU and crawl.")
+except BaseException as exc:  # noqa: BLE001
+    log.critical("CUDA PROBE FAILED: %s: %s", type(exc).__name__, exc)
 
 WORK_DIR = Path(os.environ.get("PENSPACE_WORK_DIR", "/work"))
 # A remote text file should not be able to hang the worker forever.
