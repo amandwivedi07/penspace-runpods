@@ -13,7 +13,14 @@
 #
 # Then point a RunPod Serverless endpoint at that tag. See DEPLOY_SERVERLESS.md.
 
-FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-devel
+# CUDA 12.8, not the 12.4 the batch image uses.
+#
+# RunPod's 24 GB serverless tier allocates RTX PRO 6000 MIG partitions, which
+# are Blackwell (sm_120). Wheels built against CUDA 12.4 carry no kernels for
+# that architecture, and the mismatch ABORTS the process rather than raising —
+# the worker dies with a bare "exit code 1" and no traceback. Older tiers avoid
+# it but their supply is thin, so the fix belongs in the image.
+FROM pytorch/pytorch:2.8.0-cuda12.8-cudnn9-devel
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -29,10 +36,16 @@ WORKDIR /app
 COPY penspace/requirements.txt penspace/requirements-serverless.txt /app/penspace/
 RUN pip install --no-cache-dir -r penspace/requirements-serverless.txt
 
-# FlashAttention 2 cuts VRAM and speeds up generation. It builds from source and
-# is slow; if it fails, the runtime falls back via PENSPACE_ATTN=sdpa.
+# FlashAttention 2 is attempted but NOT required.
+#
+# `resolve_attn` asks for flash_attention_2 on any CUDA device, so a failed
+# build here would make the model load raise at runtime instead of degrading.
+# Pinning PENSPACE_ATTN=sdpa below removes that trap: sdpa is slower and uses
+# more VRAM, but it works everywhere. Drop the ENV if a build succeeds and you
+# want the speed back.
 RUN MAX_JOBS=4 pip install --no-cache-dir -U flash-attn --no-build-isolation || \
-    echo "flash-attn build failed; set PENSPACE_ATTN=sdpa at runtime"
+    echo "flash-attn build failed — sdpa is pinned below, so this is survivable"
+ENV PENSPACE_ATTN=sdpa
 
 # Weights, baked. This is the whole point of this file — see the header.
 RUN pip install --no-cache-dir -U "huggingface_hub[cli]" && \
