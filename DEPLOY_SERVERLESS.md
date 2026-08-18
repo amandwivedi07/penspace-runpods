@@ -52,9 +52,18 @@ the single biggest lever on the bill.
 
 ## 2. Build and push the image
 
-The weights are baked into the image on purpose. A batch Pod boots once, so
-downloading ~7 GB from Hugging Face at boot is a rounding error; a serverless
-worker boots every time the endpoint scales up, and you are billed for the wait.
+The weights are NOT baked into the image, and that is a correction from an
+earlier version of this file.
+
+Baking them in produced a 13.85 GB image. A serverless worker pulls the entire
+image before it runs anything, and at that size workers stopped reaching ready —
+the endpoint sat on "Initializing" while jobs queued behind it. A worker that
+starts and then downloads beats a worker that never starts.
+
+To avoid paying for that download on every cold start, attach a **Network
+Volume** and set `HF_HOME` to its mount path (e.g. `/runpod-volume/hf`). The
+first worker populates it; the rest mount it. Warm workers reuse the cache
+anyway, so a batch of chapters only downloads once regardless.
 
 ```bash
 docker build -t <dockerhub-user>/penspace-tts:1 -f penspace/Dockerfile.serverless .

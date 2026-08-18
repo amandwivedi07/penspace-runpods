@@ -22,6 +22,8 @@
 # it but their supply is thin, so the fix belongs in the image.
 FROM pytorch/pytorch:2.8.0-cuda12.8-cudnn9-devel
 
+# HF_HOME is where the model cache lands. Override it to a mounted Network
+# Volume path (e.g. /runpod-volume/hf) to share one download across workers.
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     HF_HOME=/models \
@@ -47,10 +49,21 @@ RUN MAX_JOBS=4 pip install --no-cache-dir -U flash-attn --no-build-isolation || 
     echo "flash-attn build failed — sdpa is pinned below, so this is survivable"
 ENV PENSPACE_ATTN=sdpa
 
-# Weights, baked. This is the whole point of this file — see the header.
-RUN pip install --no-cache-dir -U "huggingface_hub[cli]" && \
-    hf download Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice && \
-    hf download Qwen/Qwen3-TTS-Tokenizer-12Hz
+# The Qwen weights are NOT baked in.
+#
+# They were, and it made the image 13.85 GB. Every serverless worker pulls the
+# whole image before executing a line, and at that size workers stopped becoming
+# ready at all — jobs queued behind an endpoint stuck "Initializing". A worker
+# that starts and downloads is strictly better than one that never starts.
+#
+# Two ways to avoid paying for the download repeatedly:
+#   1. Attach a RunPod Network Volume and point HF_HOME at it (see below), so the
+#      first worker populates the cache and the rest mount it.
+#   2. Rely on warm workers — the cache survives while a worker is alive, so a
+#      batch of chapters downloads once.
+#
+# The CLI tooling is still installed so a volume can be pre-populated.
+RUN pip install --no-cache-dir -U "huggingface_hub[cli]"
 
 # The Whisper QA model too: it is small, but a cold worker downloading it is a
 # cold worker you are paying to wait.
