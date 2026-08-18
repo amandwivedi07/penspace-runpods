@@ -1,0 +1,4 @@
+# Serverless adds exactly one dependency to the batch renderer.
+-r requirements.txt
+
+runpod>=1.6.2

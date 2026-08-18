@@ -22,3 +22,18 @@ wheels/
 .vscode/
 venv/
 env/
+
+# Penspace render outputs
+penspace_out/
+penspace_audition/
+
+# Build/demo artefacts — regenerable, and the zip is 10 MB of nothing RunPod needs.
+penspace-deploy.tgz
+penspace-manager-demo.zip
+manager-demo/
+.DS_Store
+
+# Manifests and exported chapter text are generated from Mongo on demand
+# (scripts/exportAudioManifest.js in the backend). Committing them would put
+# summary content in a code repo and stale it the moment an editor edits.
+export/

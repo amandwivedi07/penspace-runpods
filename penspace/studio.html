@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Penspace Studio</title>
+  <style>
+    :root {
+      --bg: #0f1117; --card: #1a1d27; --text: #eef0f4; --muted: #9aa3b2;
+      --accent: #e07a3a; --accent-dim: #3a2418; --border: #2a2f3d;
+      --ok: #3ecf8e; --warn: #f5c542; --err: #f07178;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.5;
+    }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+    h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
+    .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.25rem; }
+    .grid { display: grid; grid-template-columns: 300px 1fr; gap: 1rem; }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 1rem;
+    }
+    .card h2 {
+      font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--muted); margin: 0 0 0.75rem;
+    }
+    label {
+      display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.25rem;
+    }
+    input[type="text"], input[type="file"] {
+      width: 100%; margin-bottom: 0.6rem; background: #12151d; color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px; padding: 0.45rem 0.55rem;
+      font: inherit;
+    }
+    .check { display: flex; align-items: center; gap: 0.45rem; margin: 0.5rem 0 0.75rem; font-size: 0.85rem; }
+    .check input { width: auto; margin: 0; }
+    .chapter {
+      display: block; width: 100%; text-align: left; background: transparent;
+      border: 1px solid transparent; color: var(--text); border-radius: 10px;
+      padding: 0.65rem 0.7rem; margin-bottom: 0.35rem; cursor: pointer; font: inherit;
+    }
+    .chapter:hover { background: #222633; }
+    .chapter.active { border-color: var(--accent); background: var(--accent-dim); }
+    .chapter .title { font-weight: 600; font-size: 0.92rem; }
+    .chapter .meta { font-size: 0.78rem; color: var(--muted); margin-top: 0.15rem; }
+    .badge {
+      display: inline-block; font-size: 0.68rem; padding: 0.1rem 0.45rem;
+      border-radius: 999px; margin-left: 0.35rem; vertical-align: middle;
+    }
+    .badge.ready { background: #163528; color: var(--ok); }
+    .badge.rendering { background: #3a3018; color: var(--warn); }
+    .badge.missing { background: #2a2f3d; color: var(--muted); }
+    .badge.error { background: #3a1818; color: var(--err); }
+    audio { width: 100%; margin: 0.75rem 0; }
+    .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+    button.primary {
+      background: var(--accent); color: #111; border: none; border-radius: 10px;
+      padding: 0.55rem 0.9rem; font-weight: 600; cursor: pointer; width: 100%;
+    }
+    button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.ghost {
+      background: transparent; color: var(--text); border: 1px solid var(--border);
+      border-radius: 10px; padding: 0.55rem 0.9rem; cursor: pointer;
+    }
+    .status, .upload-status {
+      font-size: 0.85rem; color: var(--muted); min-height: 1.2rem; margin-bottom: 0.5rem;
+    }
+    .text {
+      font-family: Georgia, "Iowan Old Style", serif; font-size: 1.02rem;
+      line-height: 1.75; max-height: 52vh; overflow: auto; padding-right: 0.25rem;
+    }
+    .chunk { margin: 0 0 0.85rem; padding: 0.1rem 0.35rem; border-radius: 8px; }
+    .chunk.active { background: var(--accent-dim); }
+    .empty { color: var(--muted); font-style: italic; }
+    .hint { font-size: 0.75rem; color: var(--muted); margin-top: 0.35rem; }
+    .list-wrap { max-height: 42vh; overflow: auto; margin-top: 0.75rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Penspace Studio</h1>
+    <p class="sub">Upload a book chapter, render on GPU, listen in the browser.</p>
+
+    <div class="grid">
+      <div>
+        <div class="card" style="margin-bottom: 1rem;">
+          <h2>Upload new chapter</h2>
+          <form id="upload-form">
+            <label for="title">Title</label>
+            <input id="title" type="text" placeholder="e.g. Atomic Habits - Chapter 1" />
+
+            <label for="author">Author (optional)</label>
+            <input id="author" type="text" placeholder="e.g. James Clear" />
+
+            <label for="file">Document (.docx, .md, .txt)</label>
+            <input id="file" type="file" accept=".docx,.md,.markdown,.txt" required />
+
+            <label class="check">
+              <input id="auto-render" type="checkbox" checked />
+              Render immediately after upload
+            </label>
+
+            <button class="primary" type="submit" id="upload-btn">Upload &amp; Render</button>
+            <div class="upload-status" id="upload-status"></div>
+            <p class="hint">Max 10 MB. Word or markdown book summaries work best.</p>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Library</h2>
+          <div class="list-wrap" id="list"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 id="detail-title">Select a chapter</h2>
+        <p class="sub" id="detail-author"></p>
+        <div class="actions">
+          <button class="primary" id="render-btn" disabled style="width: auto;">Render on GPU</button>
+          <button class="ghost" id="refresh-btn">Refresh</button>
+        </div>
+        <div class="status" id="status"></div>
+        <audio id="player" controls preload="metadata"></audio>
+        <div class="text" id="text"><p class="empty">Rendered text will appear here with live highlighting.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const list = document.getElementById('list');
+    const player = document.getElementById('player');
+    const text = document.getElementById('text');
+    const statusEl = document.getElementById('status');
+    const renderBtn = document.getElementById('render-btn');
+    const refreshBtn = document.getElementById('refresh-btn');
+    const detailTitle = document.getElementById('detail-title');
+    const detailAuthor = document.getElementById('detail-author');
+    const uploadForm = document.getElementById('upload-form');
+    const uploadBtn = document.getElementById('upload-btn');
+    const uploadStatus = document.getElementById('upload-status');
+    const fileInput = document.getElementById('file');
+    const titleInput = document.getElementById('title');
+
+    let chapters = [];
+    let selected = null;
+    let pollTimer = null;
+
+    fileInput.addEventListener('change', () => {
+      if (!titleInput.value && fileInput.files[0]) {
+        titleInput.value = fileInput.files[0].name.replace(/\.[^.]+$/, '');
+      }
+    });
+
+    function badge(ch) {
+      const s = ch.job_status || ch.status;
+      if (s === 'rendering') return '<span class="badge rendering">rendering</span>';
+      if (s === 'error') return '<span class="badge error">error</span>';
+      if (ch.status === 'ready') return '<span class="badge ready">ready</span>';
+      return '<span class="badge missing">not rendered</span>';
+    }
+
+    function fmt(sec) {
+      if (!sec) return '—';
+      const m = Math.floor(sec / 60);
+      const s = Math.round(sec % 60).toString().padStart(2, '0');
+      return m + ':' + s;
+    }
+
+    async function loadChapters() {
+      const res = await fetch('/api/chapters');
+      chapters = await res.json();
+      renderList();
+      if (selected) {
+        const updated = chapters.find(c => c.id === selected.id);
+        if (updated) await selectChapter(updated.id, false);
+      }
+    }
+
+    function renderList() {
+      list.innerHTML = '';
+      if (!chapters.length) {
+        list.innerHTML = '<p class="empty">No chapters yet. Upload one above.</p>';
+        return;
+      }
+      chapters.forEach(ch => {
+        const btn = document.createElement('button');
+        btn.className = 'chapter' + (selected && selected.id === ch.id ? ' active' : '');
+        btn.innerHTML = `<div class="title">${escapeHtml(ch.title || ch.id)}${badge(ch)}</div>
+          <div class="meta">${escapeHtml(ch.author || '')} · ${fmt(ch.duration)}</div>`;
+        btn.onclick = () => selectChapter(ch.id);
+        list.appendChild(btn);
+      });
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[c]);
+    }
+
+    async function selectChapter(id, scroll = true) {
+      const res = await fetch(`/api/chapters/${id}`);
+      selected = await res.json();
+      renderList();
+      detailTitle.textContent = selected.title || selected.id;
+      detailAuthor.textContent = selected.author || '';
+      renderBtn.disabled = selected.job_status === 'rendering';
+      statusEl.textContent = selected.job_error || selected.job_message || statusText(selected);
+
+      if (selected.status === 'ready') {
+        player.src = `/api/chapters/${id}/audio?ts=${Date.now()}`;
+        player.load();
+        await loadTiming(id);
+      } else {
+        player.removeAttribute('src');
+        text.innerHTML = '<p class="empty">Render this chapter to hear the narration.</p>';
+      }
+
+      if (selected.job_status === 'rendering') startPolling();
+    }
+
+    function statusText(ch) {
+      if (ch.job_status === 'rendering') return 'Rendering on GPU… this can take a few minutes.';
+      if (ch.job_status === 'error') return ch.job_error || 'Render failed.';
+      if (ch.status === 'ready') return `Ready · ${fmt(ch.duration)} · ${ch.chunk_count || 0} chunks`;
+      return 'Not rendered yet. Click “Render on GPU”.';
+    }
+
+    async function loadTiming(id) {
+      const res = await fetch(`/api/chapters/${id}/timing`);
+      if (!res.ok) {
+        text.innerHTML = '<p class="empty">No timing data yet.</p>';
+        return;
+      }
+      const data = await res.json();
+      text.innerHTML = '';
+      (data.chunks || []).forEach(chunk => {
+        const p = document.createElement('p');
+        p.className = 'chunk';
+        p.dataset.start = chunk.start;
+        p.dataset.end = chunk.end;
+        p.textContent = chunk.text;
+        text.appendChild(p);
+      });
+    }
+
+    uploadForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      uploadBtn.disabled = true;
+      uploadStatus.textContent = 'Uploading…';
+
+      const body = new FormData();
+      body.append('file', file);
+      body.append('title', titleInput.value);
+      body.append('author', document.getElementById('author').value);
+      body.append('auto_render', document.getElementById('auto-render').checked ? 'true' : 'false');
+
+      try {
+        const res = await fetch('/api/upload', { method: 'POST', body });
+        const data = await res.json();
+        if (!res.ok) {
+          const detail = Array.isArray(data.detail)
+            ? data.detail.map(d => d.msg || d).join(', ')
+            : data.detail;
+          throw new Error(detail || 'Upload failed');
+        }
+
+        uploadStatus.textContent = 'Uploaded. ' + (data.chapter.job_status === 'rendering'
+          ? 'Rendering on GPU…' : 'Ready to render.');
+        uploadForm.reset();
+        await loadChapters();
+        await selectChapter(data.chapter.id);
+      } catch (err) {
+        uploadStatus.textContent = err.message;
+      } finally {
+        uploadBtn.disabled = false;
+      }
+    });
+
+    renderBtn.onclick = async () => {
+      if (!selected) return;
+      renderBtn.disabled = true;
+      statusEl.textContent = 'Starting GPU render…';
+      await fetch(`/api/chapters/${selected.id}/render`, { method: 'POST' });
+      startPolling();
+    };
+
+    refreshBtn.onclick = () => loadChapters();
+
+    function startPolling() {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(async () => {
+        await loadChapters();
+        if (!selected) return;
+        const ch = chapters.find(c => c.id === selected.id);
+        if (!ch) return;
+        selected = { ...selected, ...ch };
+        statusEl.textContent = selected.job_error || selected.job_message || statusText(selected);
+        renderBtn.disabled = selected.job_status === 'rendering';
+        if (selected.job_status !== 'rendering') {
+          clearInterval(pollTimer);
+          pollTimer = null;
+          if (selected.status === 'ready') await selectChapter(selected.id, false);
+        }
+      }, 3000);
+    }
+
+    player.addEventListener('timeupdate', () => {
+      const t = player.currentTime;
+      document.querySelectorAll('.chunk').forEach(el => {
+        const active = t >= +el.dataset.start && t < +el.dataset.end;
+        el.classList.toggle('active', active);
+        if (active) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    });
+
+    loadChapters();
+  </script>
+</body>
+</html>

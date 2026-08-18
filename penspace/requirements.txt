@@ -1,0 +1,22 @@
+# Pulls transformers==4.57.3 and the rest of the Qwen3-TTS runtime.
+# Do not upgrade transformers independently: the version is pinned upstream.
+qwen-tts==0.1.1
+
+# Text normalization
+num2words>=0.5.13
+
+# ASR quality gate
+faster-whisper>=1.0.3
+jiwer>=3.0.4
+
+# Mastering
+pyloudnorm>=0.1.1
+soundfile>=0.12.1
+librosa>=0.10.1
+
+# Storage
+boto3>=1.34.0
+
+# Optional: only needed to run penspace/serve_urls.py
+# fastapi>=0.110.0
+# uvicorn[standard]>=0.29.0

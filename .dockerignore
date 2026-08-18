@@ -1,0 +1,40 @@
+# The build context is uploaded to the builder in full before the first layer
+# runs. Without this, every build ships the 1.2 GB venv for nothing.
+
+venv/
+.venv/
+env/
+
+# `**/` on every one of these. A dockerignore pattern is matched against the
+# whole path and `*` does not cross a `/`, so a bare `__pycache__/` excludes
+# only a directory at the context ROOT — `penspace/__pycache__` sailed straight
+# into the image, carrying stale bytecode and bloat with it.
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.pytest_cache/
+**/.ruff_cache/
+
+.git/
+.gitignore
+**/.DS_Store
+.idea/
+.vscode/
+
+# Render outputs and local scratch
+penspace_out/
+penspace_audition/
+work/
+
+# Demo bundles and packaging artefacts — nothing the renderer needs
+manager-demo/
+penspace-manager-demo.zip
+penspace-deploy.tgz
+assets/
+
+# Docs. Kept out so editing a runbook does not invalidate the image cache.
+*.md
+!penspace/README.md
+
+# NOTE: penspace_ref.mp3 is deliberately NOT ignored — Dockerfile.serverless
+# bakes it in as the cloning reference.

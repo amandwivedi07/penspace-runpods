@@ -1,0 +1,5 @@
+# One JSON object per line. Blank lines and #-comments are ignored.
+# Each row needs "id" plus either "text" (inline) or "text_file" (path relative
+# to this manifest). "title" and "author" are optional and become m4a metadata.
+{"id": "atomic-habits", "title": "Atomic Habits", "author": "James Clear", "text": "Atomic Habits argues that remarkable results come from small, consistent improvements rather than dramatic transformations.\n\nClear introduces the idea of getting 1% better every day. Over a year, that compounds into a 37x improvement. The reverse is equally true: small negative habits compound into decline.\n\nHe frames habit change around four laws. Make it obvious, make it attractive, make it easy, and make it satisfying. Each law has an inverse for breaking bad habits."}
+{"id": "thinking-fast-and-slow", "title": "Thinking, Fast and Slow", "author": "Daniel Kahneman", "text_file": "summaries/thinking-fast-and-slow.md"}

@@ -1,0 +1,61 @@
+# RunPod Serverless image for the Penspace narration renderer.
+#
+# Same renderer as penspace/Dockerfile — the difference is what happens at
+# startup. A batch Pod boots once and runs for hours, so pulling weights from
+# Hugging Face at boot is a rounding error. A serverless worker boots every time
+# the endpoint scales up, and RunPod bills that boot, so the weights are BAKED
+# IN here rather than downloaded. A ~7 GB image pulls from RunPod's registry
+# cache far faster than the same bytes come from Hugging Face, and it cannot
+# fail halfway because HF is rate-limiting you.
+#
+#   docker build -t <user>/penspace-tts:1 -f penspace/Dockerfile.serverless .
+#   docker push <user>/penspace-tts:1
+#
+# Then point a RunPod Serverless endpoint at that tag. See DEPLOY_SERVERLESS.md.
+
+FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-devel
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    HF_HOME=/models \
+    PENSPACE_WORK_DIR=/work
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg git sox libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY penspace/requirements.txt penspace/requirements-serverless.txt /app/penspace/
+RUN pip install --no-cache-dir -r penspace/requirements-serverless.txt
+
+# FlashAttention 2 cuts VRAM and speeds up generation. It builds from source and
+# is slow; if it fails, the runtime falls back via PENSPACE_ATTN=sdpa.
+RUN MAX_JOBS=4 pip install --no-cache-dir -U flash-attn --no-build-isolation || \
+    echo "flash-attn build failed; set PENSPACE_ATTN=sdpa at runtime"
+
+# Weights, baked. This is the whole point of this file — see the header.
+RUN pip install --no-cache-dir -U "huggingface_hub[cli]" && \
+    hf download Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice && \
+    hf download Qwen/Qwen3-TTS-Tokenizer-12Hz
+
+# The Whisper QA model too: it is small, but a cold worker downloading it is a
+# cold worker you are paying to wait.
+ARG WHISPER_MODEL=small.en
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('$WHISPER_MODEL', device='cpu', compute_type='int8')"
+
+# Keep the baked model and the one the runner asks for in lockstep. If they
+# diverge, the worker quietly downloads a second model on its first request —
+# billed, and slow, in exactly the place this file exists to avoid.
+ENV PENSPACE_WHISPER_MODEL=$WHISPER_MODEL
+
+COPY penspace /app/penspace
+
+# The reference recording for voice cloning. Baked in so the voice cannot drift
+# between workers, and so an endpoint needs no volume mounted just to hold one
+# 284 KB file.
+COPY penspace_ref.mp3 /app/penspace_ref.mp3
+
+RUN mkdir -p /work
+
+CMD ["python", "-u", "-m", "penspace.handler"]

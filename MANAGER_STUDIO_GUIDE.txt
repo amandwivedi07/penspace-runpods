@@ -1,0 +1,28 @@
+PENSPEACE STUDIO — MANAGER GUIDE
+================================
+
+This is a web app for trying AI-narrated book summaries. No coding or install needed.
+
+HOW TO USE
+----------
+1. Open the link shared with you (Chrome or Safari).
+2. In the left panel, fill in:
+   - Title (e.g. "Atomic Habits - Chapter 1")
+   - Author (optional)
+   - Choose a .docx, .md, or .txt file with the summary text
+3. Click "Upload & Render".
+4. Wait a few minutes while the GPU generates the audio.
+5. When status shows "ready", press Play. Text highlights as the voice reads.
+
+TIPS
+----
+- Word (.docx) and markdown (.md) both work.
+- First render after upload takes longest (model loads once).
+- You can upload multiple chapters — they appear in the Library list.
+- If upload fails, check the file is under 10 MB.
+
+TROUBLESHOOTING
+---------------
+- Page won't load? The GPU server may be paused — ask Advait to resume it.
+- Stuck on "rendering"? Wait 5–10 minutes for long chapters, then click Refresh.
+- Bad audio quality? Try shorter, cleaner summary text without tables or bullet chaos.
