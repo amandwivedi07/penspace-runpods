@@ -94,9 +94,16 @@ def main() -> int:
     if cfg.is_clone and not os.environ.get("PENSPACE_REF_TEXT"):
         log.warning("PENSPACE_REF_TEXT is not pinned — renders may not dedupe against S3.")
 
+    storage = S3Storage(cfg)
+    try:
+        storage.preflight()
+    except RuntimeError as exc:
+        log.error("%s", exc)
+        return 1
+
     log.info("loading model (once — every chapter after this reuses it)")
     cfg = prepare_clone(cfg)
-    runner = Runner(cfg, Path(args.work_dir), S3Storage(cfg))
+    runner = Runner(cfg, Path(args.work_dir), storage)
     log.info("ready; polling %s", args.api)
 
     rendered_total = 0

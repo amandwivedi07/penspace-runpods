@@ -115,6 +115,11 @@ def _build_runner() -> Runner:
             "No PENSPACE_S3_BUCKET set: audio stays on the worker's local disk "
             "and is lost when it scales down. Set the bucket."
         )
+    else:
+        # Raising here fails the endpoint at cold start, which is the point: a
+        # credential problem found at upload time has already been billed for
+        # the render.
+        storage.preflight()
 
     WORK_DIR.mkdir(parents=True, exist_ok=True)
     return Runner(cfg, WORK_DIR, storage)

@@ -38,6 +38,44 @@ class S3Storage:
         self.bucket = cfg.s3_bucket
         self.client = boto3.client("s3", region_name=cfg.s3_region)
 
+    def preflight(self) -> None:
+        """Prove we can write to the bucket before spending GPU time.
+
+        A missing credential only surfaces at the first upload, which is after
+        a full chapter has been synthesised, WER-checked and mastered — around
+        90 seconds of GPU per chapter, silently wasted on every job in the
+        queue. Failing here instead costs one API call.
+        """
+        from botocore.exceptions import ClientError, NoCredentialsError
+
+        try:
+            # head_bucket has to sign the request, so a missing or unusable
+            # credential surfaces here as NoCredentialsError.
+            self.client.head_bucket(Bucket=self.bucket)
+        except NoCredentialsError:
+            raise RuntimeError(
+                "No AWS credentials. Export AWS_ACCESS_KEY_ID and "
+                "AWS_SECRET_ACCESS_KEY (and AWS_DEFAULT_REGION) before starting "
+                "the worker — audio would render fine and then fail to upload."
+            ) from None
+        except ClientError as e:
+            code = e.response["Error"]["Code"]
+            if code in ("404", "NoSuchBucket"):
+                raise RuntimeError(
+                    f"Bucket {self.bucket!r} does not exist in region "
+                    f"{self.cfg.s3_region!r}. Check --bucket and AWS_DEFAULT_REGION."
+                ) from None
+            if code in ("403", "AccessDenied", "InvalidAccessKeyId", "SignatureDoesNotMatch"):
+                raise RuntimeError(
+                    f"Credentials rejected for bucket {self.bucket!r} ({code}). "
+                    "Either the key/secret is wrong, or it lacks s3:PutObject "
+                    "and s3:ListBucket on that bucket."
+                ) from None
+            raise RuntimeError(
+                f"S3 preflight failed for {self.bucket!r}: {code}"
+            ) from None
+        log.info("s3 preflight ok: s3://%s (%s)", self.bucket, self.cfg.s3_region)
+
     def exists(self, key: str) -> bool:
         from botocore.exceptions import ClientError
 

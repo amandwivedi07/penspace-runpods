@@ -26,10 +26,24 @@ def resolve_device(preference: str = "auto") -> str:
 
 
 def resolve_attn(preference: str, device: str) -> str:
-    """FlashAttention 2 is CUDA-only; everything else uses PyTorch SDPA."""
+    """FlashAttention 2 needs CUDA *and* the flash_attn package.
+
+    Being on CUDA is not enough: the Docker image ships flash_attn, but a
+    bare-metal pod built from a plain PyTorch base does not. Asking for
+    flash_attention_2 without the package raises ImportError deep inside
+    transformers, after the model download and several minutes of import —
+    so probe for it here and fall back rather than failing late.
+    """
     if preference and preference != "auto":
         return preference
-    return "flash_attention_2" if device.startswith("cuda") else "sdpa"
+    if not device.startswith("cuda"):
+        return "sdpa"
+    import importlib.util
+
+    if importlib.util.find_spec("flash_attn") is None:
+        log.info("flash_attn not installed; using sdpa (slower, install flash-attn to speed up)")
+        return "sdpa"
+    return "flash_attention_2"
 
 
 def resolve_dtype(preference: str, device: str):
