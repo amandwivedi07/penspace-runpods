@@ -142,6 +142,13 @@ def main() -> int:
                         text=job["text"],
                         title=job.get("title"),
                         author=job.get("author"),
+                        # The backend says which language this chapter is in.
+                        # One pod now serves all five, so narrating in the
+                        # pod's own configured language would read German text
+                        # in English — a plausible file nothing can detect as
+                        # wrong. Absent (an older backend) falls back to the
+                        # pod's config, which is the previous behaviour.
+                        language=job.get("language"),
                     )
                 )
                 row = result.to_dict()

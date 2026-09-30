@@ -150,6 +150,7 @@ class Synthesizer:
         indices: Optional[List[int]] = None,
         seed: Optional[int] = None,
         speaker: Optional[str] = None,
+        language: Optional[str] = None,
     ):
         """Yield ChunkAudio as each batch completes.
 
@@ -159,6 +160,11 @@ class Synthesizer:
         """
         self.load()
         voice = speaker or self.cfg.speaker
+        # Per call, not per endpoint. The model already takes a language for
+        # every item in the batch; only this layer was pinning it to the
+        # deployed config, which meant one endpoint could narrate exactly one
+        # language and five languages meant five deployments.
+        lang = language or self.cfg.language
         if indices is None:
             indices = list(range(len(texts)))
 
@@ -177,7 +183,7 @@ class Synthesizer:
                 # deliberately not passed here.
                 wavs, sr = self._model.generate_voice_clone(
                     text=batch,
-                    language=[self.cfg.language] * n,
+                    language=[lang] * n,
                     voice_clone_prompt=self.clone_prompt(),
                     **self._gen_kwargs(),
                 )
@@ -185,7 +191,7 @@ class Synthesizer:
                 wavs, sr = self._model.generate_custom_voice(
                     text=batch,
                     speaker=[voice] * n,
-                    language=[self.cfg.language] * n,
+                    language=[lang] * n,
                     instruct=[self.cfg.instruct] * n,
                     **self._gen_kwargs(),
                 )
