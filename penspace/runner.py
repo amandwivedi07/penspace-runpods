@@ -36,6 +36,10 @@ class SummaryJob:
     text: str
     title: Optional[str] = None
     author: Optional[str] = None
+    # The language to narrate IN — "German", "Japanese", as the model names
+    # them. Absent means the endpoint's configured default, which is what every
+    # job was before this and keeps older callers working unchanged.
+    language: Optional[str] = None
 
 
 @dataclass
@@ -175,7 +179,7 @@ class Runner:
         self.synth = Synthesizer(cfg)
         self.qa = QAGate(cfg) if cfg.qa_enabled else None
 
-    def _render_id(self, normalized_text: str) -> str:
+    def _render_id(self, normalized_text: str, language: str) -> str:
         """Identity of this render: change the text or the voice, get a new id."""
         fingerprint = "\x00".join(
             [
@@ -186,7 +190,11 @@ class Runner:
                 # to change the render id too.
                 _reference_fingerprint(self.cfg),
                 self.cfg.speaker,
-                self.cfg.language,
+                # THE JOB'S language, not the endpoint's. The same text narrated
+                # in two languages is two different recordings, and an id that
+                # could not tell them apart would let the S3 skip hand back the
+                # wrong one.
+                language,
                 self.cfg.instruct,
                 str(self.cfg.max_chunk_chars),
                 str(self.cfg.target_lufs),
@@ -224,7 +232,7 @@ class Runner:
     # --- generation + QA ---------------------------------------------------
 
     def _synthesize_chunks(
-        self, out_dir: Path, chunks: List[Chunk]
+        self, out_dir: Path, chunks: List[Chunk], language: Optional[str] = None
     ) -> tuple[Dict[int, ChunkAudio], List[int], float]:
         audios = self._load_cached(out_dir, chunks)
         by_index = {c.index: c for c in chunks}
@@ -237,7 +245,7 @@ class Runner:
             # Save as each batch lands. Anything already on disk survives a
             # crash, a kill, or a machine that runs out of memory.
             for item in self.synth.iter_synthesize(
-                [c.text for c in todo], [c.index for c in todo]
+                [c.text for c in todo], [c.index for c in todo], language=language
             ):
                 audios[item.index] = item
                 self._save_chunk(out_dir, item)
@@ -300,7 +308,8 @@ class Runner:
         if not chunks:
             raise ValueError(f"{job.id}: no text to synthesize after normalization")
 
-        render_id = self._render_id(text)
+        language = job.language or self.cfg.language
+        render_id = self._render_id(text, language)
         out_dir = self.work_dir / job.id / render_id
         out_dir.mkdir(parents=True, exist_ok=True)
         audio_path = out_dir / "audio.m4a"
@@ -328,7 +337,7 @@ class Runner:
             )
 
         log.info("%s: %d chunks (render %s)", job.id, len(chunks), render_id)
-        audios, failed, worst_wer = self._synthesize_chunks(out_dir, chunks)
+        audios, failed, worst_wer = self._synthesize_chunks(out_dir, chunks, language)
 
         wav, sample_rate, timings = audio_mod.assemble(
             list(audios.values()), chunks, self.cfg

@@ -195,6 +195,9 @@ def _parse(payload: Dict[str, Any]) -> Tuple[List[SummaryJob], List[Dict[str, An
                     text=_text_for(row),
                     title=row.get("title"),
                     author=row.get("author"),
+                    # Optional: without it the endpoint's configured language
+                    # applies, which is how every caller behaved before.
+                    language=row.get("language"),
                 )
             )
         except Exception as exc:  # noqa: BLE001
