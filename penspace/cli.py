@@ -52,6 +52,21 @@ def _apply_overrides(cfg: Config, args) -> Config:
     # Supplying a reference recording is what selects clone mode.
     if cfg.ref_audio:
         cfg.voice_mode = "clone"
+    for field in (
+        "backend", "cartesia_voice_id", "cartesia_model",
+        "cartesia_api_key", "cartesia_concurrency",
+    ):
+        value = getattr(args, field, None)
+        if value is not None:
+            setattr(cfg, field, value)
+    # Naming a voice is unambiguous about which backend you meant.
+    if cfg.cartesia_voice_id and not getattr(args, "backend", None):
+        cfg.backend = "cartesia"
+    if cfg.is_cartesia and cfg.ref_audio:
+        raise SystemExit(
+            "--ref-audio has no meaning with the Cartesia backend: clone the "
+            "voice in Cartesia's dashboard and pass its --voice-id instead."
+        )
     return cfg
 
 
@@ -68,6 +83,16 @@ def cmd_estimate(args) -> int:
     cfg = _apply_overrides(Config.from_env(), args)
     jobs = _select(load_manifest(Path(args.manifest)), args)
     report = estimate(jobs, cfg)
+    if cfg.is_cartesia:
+        # Characters are money on this backend, so price the run BEFORE it
+        # runs. One credit per character; the rate is the overage rate of
+        # whichever plan you are on, and plans differ, so it is an input.
+        credits = report["characters"]
+        report["cartesia_credits"] = credits
+        report["cartesia_cost_usd"] = round(
+            credits / 1_000_000 * args.credit_rate, 2
+        )
+        report["cartesia_rate_usd_per_million"] = args.credit_rate
     print(json.dumps(report, indent=2))
     if report["oversized_chunks"]:
         print(
@@ -92,7 +117,21 @@ def cmd_render(args) -> int:
         logging.warning("no --bucket given; rendering locally without upload")
 
     work_dir = Path(args.work_dir)
-    results = Runner(cfg, work_dir, storage).run(jobs)
+    runner = Runner(cfg, work_dir, storage)
+
+    if cfg.is_cartesia and args.max_credits:
+        # A wrong manifest on a paid backend is a bill, not a wasted afternoon.
+        # Refuse up front rather than discovering it halfway through.
+        planned = estimate(jobs, cfg)["characters"]
+        if planned > args.max_credits:
+            print(
+                f"refusing to start: {planned:,} credits planned, "
+                f"--max-credits is {args.max_credits:,}",
+                file=sys.stderr,
+            )
+            return 1
+
+    results = runner.run(jobs)
 
     # The catalog is the handoff to the app: one row per playable summary.
     catalog = work_dir / "catalog.jsonl"
@@ -107,6 +146,12 @@ def cmd_render(args) -> int:
     print(f"\nrendered {len(rendered)}, skipped {len(results) - len(rendered)}, "
           f"failed {len(jobs) - len(results)}")
     print(f"total audio: {total_hours:.2f} h")
+    if cfg.is_cartesia:
+        # What this run actually cost, counted from the requests that returned
+        # audio. Skipped summaries cost nothing, and QA retries cost again —
+        # neither is visible in the character count of the manifest.
+        spent = getattr(runner.synth, "characters_sent", 0)
+        print(f"cartesia credits spent: {spent:,}")
     print(f"catalog: {catalog}")
     if flagged:
         print(f"\n{len(flagged)} summaries have chunks that never passed QA:",
@@ -201,9 +246,33 @@ def build_parser() -> argparse.ArgumentParser:
             action="store_true",
             help="clone from the speaker embedding alone; no transcript, lower fidelity",
         )
+        sp.add_argument(
+            "--backend",
+            choices=("qwen", "cartesia"),
+            help="qwen renders on this machine's GPU; cartesia calls Sonic over HTTP",
+        )
+        sp.add_argument(
+            "--voice-id",
+            dest="cartesia_voice_id",
+            help="Cartesia voice id (implies --backend cartesia)",
+        )
+        sp.add_argument("--cartesia-model", dest="cartesia_model")
+        sp.add_argument("--cartesia-key", dest="cartesia_api_key")
+        sp.add_argument(
+            "--cartesia-concurrency",
+            type=int,
+            dest="cartesia_concurrency",
+            help="requests in flight (default 8)",
+        )
 
     est = sub.add_parser("estimate", help="chunk the manifest without using a GPU")
     est.add_argument("--manifest", required=True)
+    est.add_argument(
+        "--credit-rate",
+        type=float,
+        default=38.0,
+        help="USD per million Cartesia credits, for the cost line (default 38)",
+    )
     add_common(est)
     est.set_defaults(func=cmd_estimate)
 
@@ -214,6 +283,11 @@ def build_parser() -> argparse.ArgumentParser:
     ren.add_argument("--s3-prefix", dest="s3_prefix")
     ren.add_argument("--max-wer", type=float, dest="max_wer")
     ren.add_argument("--no-qa", action="store_true", help="skip the ASR quality gate")
+    ren.add_argument(
+        "--max-credits",
+        type=int,
+        help="refuse to start if a Cartesia run would cost more than this",
+    )
     add_common(ren)
     ren.set_defaults(func=cmd_render)
 

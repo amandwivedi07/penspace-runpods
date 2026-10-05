@@ -25,6 +25,20 @@ from .qa import QAGate
 from .storage import S3Storage, render_key
 from .synth import ChunkAudio, Synthesizer
 
+
+def build_synthesizer(cfg: Config):
+    """The configured backend.
+
+    Imported lazily: a Cartesia run should not need torch installed, and a
+    local run should not need a network client. Both satisfy the same contract
+    (`load`, `iter_synthesize`, `synthesize` -> ChunkAudio).
+    """
+    if cfg.is_cartesia:
+        from .cartesia import CartesiaSynthesizer
+
+        return CartesiaSynthesizer(cfg)
+    return Synthesizer(cfg)
+
 log = logging.getLogger(__name__)
 
 RETRY_SEED_BASE = 1_000
@@ -176,7 +190,7 @@ class Runner:
         self.cfg = cfg
         self.work_dir = Path(work_dir)
         self.storage = storage
-        self.synth = Synthesizer(cfg)
+        self.synth = build_synthesizer(cfg)
         self.qa = QAGate(cfg) if cfg.qa_enabled else None
 
     def _render_id(self, normalized_text: str, language: str) -> str:
@@ -426,7 +440,7 @@ def audition(
         raise ValueError("no text to synthesize after normalization")
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    synth = Synthesizer(cfg)
+    synth = build_synthesizer(cfg)
     results: List[dict] = []
 
     # Load before timing starts. Otherwise the first voice absorbs the whole

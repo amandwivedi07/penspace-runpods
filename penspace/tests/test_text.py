@@ -156,10 +156,13 @@ class TestCloneConfig:
         ref.write_bytes(b"reference")
         text = "Small habits compound."
 
-        builtin = Runner(Config(), tmp_path)._render_id(text)
+        # `language` became required when the renderer learned to take it from
+        # the job rather than the endpoint; hold it fixed so this test keeps
+        # measuring the voice.
+        builtin = Runner(Config(), tmp_path)._render_id(text, "English")
         cloned = Runner(
             Config(voice_mode="clone", ref_audio=str(ref), ref_text="hi"), tmp_path
-        )._render_id(text)
+        )._render_id(text, "English")
 
         # Same text, different voice -> different S3 key, so a re-render never
         # serves stale audio from the previous voice.

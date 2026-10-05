@@ -90,6 +90,24 @@ class Config:
     peak_ceiling_db: float = -1.0
     bitrate: str = "64k"
 
+    # --- backend ---
+    # "qwen" renders on a local/rented GPU; "cartesia" calls Sonic over HTTP.
+    # Cheap-and-yours versus paid-and-managed, chosen per run — see cartesia.py.
+    backend: str = "qwen"
+    cartesia_api_key: Optional[str] = None
+    # The cloned voice, created in Cartesia's dashboard. There is no reference
+    # recording here: the clone already happened, and this names the result.
+    cartesia_voice_id: Optional[str] = None
+    cartesia_model: str = "sonic-3.6"
+    cartesia_sample_rate: int = 44100
+    cartesia_speed: float = 1.0
+    # Requests in flight. Throughput here is network-bound, not GPU-bound, so
+    # this is the dial that batch_size is for the local model.
+    cartesia_concurrency: int = 8
+    cartesia_timeout: int = 120
+    cartesia_max_retries: int = 3
+    cartesia_backoff: float = 1.5
+
     # --- storage ---
     s3_bucket: Optional[str] = None
     s3_prefix: str = "penspace/audio"
@@ -105,8 +123,20 @@ class Config:
 
     @property
     def active_model_path(self) -> str:
-        """Cloning needs the Base checkpoint; built-in speakers need CustomVoice."""
+        """Cloning needs the Base checkpoint; built-in speakers need CustomVoice.
+
+        Also the backend's identity, because `_render_id` fingerprints this: a
+        chapter narrated by Qwen and the same chapter narrated by Sonic are two
+        different recordings, and an id that could not tell them apart would let
+        the S3 skip hand back the wrong one when you switch.
+        """
+        if self.is_cartesia:
+            return f"cartesia:{self.cartesia_model}:{self.cartesia_voice_id}"
         return self.clone_model_path if self.is_clone else self.model_path
+
+    @property
+    def is_cartesia(self) -> bool:
+        return self.backend == "cartesia"
 
     @property
     def max_chunk_seconds(self) -> float:
@@ -140,6 +170,13 @@ class Config:
         c.max_retries = _env_int("PENSPACE_MAX_RETRIES", c.max_retries)
         c.target_lufs = _env_float("PENSPACE_TARGET_LUFS", c.target_lufs)
         c.bitrate = _env_str("PENSPACE_BITRATE", c.bitrate)
+        c.backend = _env_str("PENSPACE_BACKEND", c.backend)
+        c.cartesia_api_key = _env_str("CARTESIA_API_KEY", c.cartesia_api_key)
+        c.cartesia_voice_id = _env_str("PENSPACE_CARTESIA_VOICE", c.cartesia_voice_id)
+        c.cartesia_model = _env_str("PENSPACE_CARTESIA_MODEL", c.cartesia_model)
+        c.cartesia_concurrency = _env_int(
+            "PENSPACE_CARTESIA_CONCURRENCY", c.cartesia_concurrency
+        )
         c.s3_bucket = _env_str("PENSPACE_S3_BUCKET", c.s3_bucket)
         c.s3_prefix = _env_str("PENSPACE_S3_PREFIX", c.s3_prefix)
         c.s3_region = _env_str("AWS_REGION", c.s3_region)
