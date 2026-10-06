@@ -24,6 +24,10 @@ class Chunk:
     index: int
     text: str
     ends_paragraph: bool
+    # A paragraph short enough to be a chapter title or a "<book> by <author>"
+    # line rather than prose. It is followed by a longer pause, because a
+    # heading read straight into the body sounds like one run-on sentence.
+    is_heading: bool = False
 
 
 def split_sentences(paragraph: str) -> List[str]:
@@ -75,12 +79,12 @@ def _split_long_sentence(sentence: str, max_chars: int) -> List[str]:
     return _greedy_join(sentence.split(" "), " ", max_chars)
 
 
-def chunk_text(text: str, max_chars: int = 300) -> List[Chunk]:
+def chunk_text(text: str, max_chars: int = 300, heading_max_chars: int = 70) -> List[Chunk]:
     """Chunk normalized text, flagging chunks that end a paragraph."""
     chunks: List[Chunk] = []
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
 
-    for paragraph in paragraphs:
+    for paragraph_index, paragraph in enumerate(paragraphs):
         pieces: List[str] = []
         cur = ""
         for sentence in split_sentences(paragraph):
@@ -101,6 +105,24 @@ def chunk_text(text: str, max_chars: int = 300) -> List[Chunk]:
                     index=len(chunks),
                     text=piece,
                     ends_paragraph=(i == len(pieces) - 1),
+                    # One short piece standing alone as its whole paragraph.
+                    # A long paragraph that happens to fit in one chunk is
+                    # prose, not a heading, hence the length test as well.
+                    is_heading=(
+                        len(pieces) == 1
+                        and len(piece) <= heading_max_chars
+                        and (
+                            # No terminal punctuation: "Introduction".
+                            not piece.rstrip().endswith((".", "!", "?"))
+                            # Or it opens the text, which is where the
+                            # "<book> by <author>" line lives. Later on, a
+                            # short paragraph ending in a full stop is prose —
+                            # "Small habits compound." is a sentence, not a
+                            # heading, and pausing a second after it is worse
+                            # than not pausing at all.
+                            or paragraph_index < 2
+                        )
+                    ),
                 )
             )
 

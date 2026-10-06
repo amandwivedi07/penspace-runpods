@@ -75,7 +75,12 @@ def assemble(
         cursor += duration
 
         if i < len(chunks) - 1:
-            gap = cfg.paragraph_gap_ms if chunk.ends_paragraph else cfg.sentence_gap_ms
+            if chunk.is_heading:
+                gap = cfg.heading_gap_ms
+            elif chunk.ends_paragraph:
+                gap = cfg.paragraph_gap_ms
+            else:
+                gap = cfg.sentence_gap_ms
             pieces.append(_silence(gap, sample_rate))
             cursor += gap / 1000.0
 

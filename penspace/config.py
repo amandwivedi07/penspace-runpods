@@ -74,8 +74,22 @@ class Config:
     # The model caps at max_new_tokens codec frames (~164s at 2048). We stay far
     # under that: smaller chunks give finer QA granularity and cheaper retries.
     max_chunk_chars: int = 300
-    sentence_gap_ms: int = 120
-    paragraph_gap_ms: int = 350
+    # Pause lengths, in milliseconds.
+    #
+    # These were 120/350 and listeners called the result rushed. A narrator
+    # leaves roughly 350-600ms at a sentence end and the better part of a
+    # second between paragraphs; join() also trims the model's own trailing
+    # breath off every chunk, so whatever is set here is the ONLY pause the
+    # listener gets. Too short reads as clipped, not as brisk.
+    sentence_gap_ms: int = 380
+    paragraph_gap_ms: int = 750
+    # A heading — a chapter title, or the "<book> by <author>" line that opens
+    # a summary — is a short paragraph of its own, and running it into the body
+    # at a normal paragraph gap is what made "...by James Clear. Introduction."
+    # sound like one breathless sentence.
+    heading_gap_ms: int = 1000
+    # What counts as a heading: a short paragraph that is one chunk long.
+    heading_max_chars: int = 70
     lead_in_ms: int = 200
     tail_ms: int = 400
 
@@ -134,6 +148,14 @@ class Config:
         c.max_new_tokens = _env_int("PENSPACE_MAX_NEW_TOKENS", c.max_new_tokens)
         c.temperature = _env_float("PENSPACE_TEMPERATURE", c.temperature)
         c.max_chunk_chars = _env_int("PENSPACE_MAX_CHUNK_CHARS", c.max_chunk_chars)
+        # Tunable without rebuilding the image: pacing is a matter of taste and
+        # a listener's note should not cost a 20 minute CI run to act on.
+        c.sentence_gap_ms = _env_int("PENSPACE_SENTENCE_GAP_MS", c.sentence_gap_ms)
+        c.paragraph_gap_ms = _env_int("PENSPACE_PARAGRAPH_GAP_MS", c.paragraph_gap_ms)
+        c.heading_gap_ms = _env_int("PENSPACE_HEADING_GAP_MS", c.heading_gap_ms)
+        c.heading_max_chars = _env_int("PENSPACE_HEADING_MAX_CHARS", c.heading_max_chars)
+        c.lead_in_ms = _env_int("PENSPACE_LEAD_IN_MS", c.lead_in_ms)
+        c.tail_ms = _env_int("PENSPACE_TAIL_MS", c.tail_ms)
         c.qa_enabled = _env_bool("PENSPACE_QA", c.qa_enabled)
         c.whisper_model = _env_str("PENSPACE_WHISPER_MODEL", c.whisper_model)
         c.max_wer = _env_float("PENSPACE_MAX_WER", c.max_wer)
