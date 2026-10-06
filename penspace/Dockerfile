@@ -79,6 +79,25 @@ COPY penspace_ref.mp3 /app/penspace_ref.mp3
 # against either, and so switching back costs an env var rather than a rebuild.
 COPY julian_ref_clean.mp3 /app/julian_ref_clean.mp3
 
+# Two references cut from a rendered narration, not from a recording of anyone.
+#
+# These are OUTPUT: audio this pipeline produced earlier. Cloning from them
+# clones a clone, and the drift is measurable — a clip taken from the long one
+# has a pitch spread of 38.6 Hz against the 32.6 Hz of the recording it
+# descends from, and 69.5% voiced frames against 59.8%. Each generation
+# compounds that. They ship because they were asked for and because judging
+# them needs a render, not an argument; the transcripts beside them in refs/
+# are what PENSPACE_REF_TEXT must be set to, exactly.
+#
+#   /app/hf_ref_30s.mp3   31.8s, cut on a sentence boundary  -> refs/hf_ref_30s.txt
+#   /app/hf_ref_full.mp3  166.3s, the whole file             -> refs/hf_ref_full.txt
+#
+# Prefer the 30s one. Cloning wants roughly 10-30 seconds of clean speech;
+# past that it adds little and the prompt gets expensive to build.
+COPY hf_ref_30s.mp3 /app/hf_ref_30s.mp3
+COPY hf_ref_full.mp3 /app/hf_ref_full.mp3
+COPY refs /app/refs
+
 # PENSPACE_WORK_DIR points here, and nothing else creates it. Without this the
 # worker dies on its first chapter with "No such file or directory" — which it
 # did, on a pod that was otherwise correct.
