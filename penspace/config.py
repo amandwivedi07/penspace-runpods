@@ -95,6 +95,9 @@ class Config:
     heading_lead_gap_ms: int = 1100
     # What counts as a heading: a short paragraph that is one chunk long.
     heading_max_chars: int = 70
+    # Give every sentence its own chunk, so every full stop gets a real pause.
+    # See chunk_text() for why packing sentences made them run together.
+    one_sentence_per_chunk: bool = True
     lead_in_ms: int = 200
     tail_ms: int = 400
 
@@ -160,6 +163,9 @@ class Config:
         c.heading_gap_ms = _env_int("PENSPACE_HEADING_GAP_MS", c.heading_gap_ms)
         c.heading_lead_gap_ms = _env_int("PENSPACE_HEADING_LEAD_GAP_MS", c.heading_lead_gap_ms)
         c.heading_max_chars = _env_int("PENSPACE_HEADING_MAX_CHARS", c.heading_max_chars)
+        c.one_sentence_per_chunk = _env_bool(
+            "PENSPACE_ONE_SENTENCE_PER_CHUNK", c.one_sentence_per_chunk
+        )
         c.lead_in_ms = _env_int("PENSPACE_LEAD_IN_MS", c.lead_in_ms)
         c.tail_ms = _env_int("PENSPACE_TAIL_MS", c.tail_ms)
         c.qa_enabled = _env_bool("PENSPACE_QA", c.qa_enabled)

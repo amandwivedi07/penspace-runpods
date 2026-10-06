@@ -79,8 +79,25 @@ def _split_long_sentence(sentence: str, max_chars: int) -> List[str]:
     return _greedy_join(sentence.split(" "), " ", max_chars)
 
 
-def chunk_text(text: str, max_chars: int = 300, heading_max_chars: int = 70) -> List[Chunk]:
-    """Chunk normalized text, flagging chunks that end a paragraph."""
+def chunk_text(
+    text: str,
+    max_chars: int = 300,
+    heading_max_chars: int = 70,
+    one_sentence_per_chunk: bool = True,
+) -> List[Chunk]:
+    """Chunk normalized text, flagging chunks that end a paragraph.
+
+    The pause between chunks is the only pause a listener gets, because join()
+    trims the model's own trailing silence. So packing several sentences into
+    one 300 character chunk means the full stops INSIDE it are narrated with
+    whatever the model happened to produce, which is often nothing: a listener
+    reported a paragraph of four sentences running together, and it did,
+    because those 420 characters were two chunks with one gap between them.
+
+    one_sentence_per_chunk gives every sentence its own chunk, so every full
+    stop gets sentence_gap_ms. It costs more synthesis calls for the same
+    audio. Set it False to go back to packing.
+    """
     chunks: List[Chunk] = []
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
 
@@ -89,7 +106,13 @@ def chunk_text(text: str, max_chars: int = 300, heading_max_chars: int = 70) -> 
         cur = ""
         for sentence in split_sentences(paragraph):
             for piece in _split_long_sentence(sentence, max_chars):
-                if not cur:
+                if one_sentence_per_chunk:
+                    # A sentence too long for one chunk still arrives here in
+                    # several pieces; each becomes its own chunk, which is the
+                    # old behaviour for that case and the right one — the split
+                    # was made at a clause boundary.
+                    pieces.append(piece)
+                elif not cur:
                     cur = piece
                 elif len(cur) + 1 + len(piece) <= max_chars:
                     cur = f"{cur} {piece}"
