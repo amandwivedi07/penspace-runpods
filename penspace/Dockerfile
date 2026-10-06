@@ -77,6 +77,24 @@ COPY penspace /app/penspace
 # up the new voice, because the reference is part of the render fingerprint.
 COPY julian_ref_clean.mp3 /app/julian_ref_clean.mp3
 
+# Julian 2.0 — a second take from the narrator, on trial against the one above.
+#
+# Cut from a 60-second recording that began and ended mid-sentence: this is
+# 2.225s to 23.035s, five complete sentences, with 20ms fades so the cut does
+# not click. Twenty seconds is inside the range cloning uses; the full minute
+# adds nothing about the voice and makes the clone prompt slower to build on
+# every boot.
+#
+# It is the same Atomic Habits passage as an earlier GENERATED file, which is
+# worth knowing — but waveform correlation against that file is 0.047, so this
+# is its own recording, not a clone of a clone.
+#
+# PENSPACE_REF_TEXT for this clip is julian_ref_v2.txt, word for word. It is
+# NOT the transcript of julian_ref_clean.mp3: switching PENSPACE_REF_AUDIO
+# without switching the text degrades the clone and changes every render id.
+COPY julian_ref_v2.mp3 /app/julian_ref_v2.mp3
+COPY julian_ref_v2.txt /app/julian_ref_v2.txt
+
 # PENSPACE_WORK_DIR points here, and nothing else creates it. Without this the
 # worker dies on its first chapter with "No such file or directory" — which it
 # did, on a pod that was otherwise correct.
