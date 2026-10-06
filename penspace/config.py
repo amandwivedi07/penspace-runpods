@@ -88,6 +88,11 @@ class Config:
     # at a normal paragraph gap is what made "...by James Clear. Introduction."
     # sound like one breathless sentence.
     heading_gap_ms: int = 1000
+    # The pause BEFORE a heading, which is the one a listener actually notices.
+    # Announcing "Introduction" or "Insight 3" straight off the back of the
+    # previous sentence is what makes a summary run together; the ear needs the
+    # previous thought to land before the next one is named.
+    heading_lead_gap_ms: int = 1100
     # What counts as a heading: a short paragraph that is one chunk long.
     heading_max_chars: int = 70
     lead_in_ms: int = 200
@@ -153,6 +158,7 @@ class Config:
         c.sentence_gap_ms = _env_int("PENSPACE_SENTENCE_GAP_MS", c.sentence_gap_ms)
         c.paragraph_gap_ms = _env_int("PENSPACE_PARAGRAPH_GAP_MS", c.paragraph_gap_ms)
         c.heading_gap_ms = _env_int("PENSPACE_HEADING_GAP_MS", c.heading_gap_ms)
+        c.heading_lead_gap_ms = _env_int("PENSPACE_HEADING_LEAD_GAP_MS", c.heading_lead_gap_ms)
         c.heading_max_chars = _env_int("PENSPACE_HEADING_MAX_CHARS", c.heading_max_chars)
         c.lead_in_ms = _env_int("PENSPACE_LEAD_IN_MS", c.lead_in_ms)
         c.tail_ms = _env_int("PENSPACE_TAIL_MS", c.tail_ms)

@@ -75,12 +75,19 @@ def assemble(
         cursor += duration
 
         if i < len(chunks) - 1:
+            # This gap sits BETWEEN chunk i and chunk i+1, so both sides have
+            # a claim on it. A heading wants room after it, and — the part a
+            # listener actually notices — the chunk before a heading wants room
+            # so the previous thought lands before the next one is named.
+            # Whichever side asks for more wins.
             if chunk.is_heading:
                 gap = cfg.heading_gap_ms
             elif chunk.ends_paragraph:
                 gap = cfg.paragraph_gap_ms
             else:
                 gap = cfg.sentence_gap_ms
+            if chunks[i + 1].is_heading:
+                gap = max(gap, cfg.heading_lead_gap_ms)
             pieces.append(_silence(gap, sample_rate))
             cursor += gap / 1000.0
 
