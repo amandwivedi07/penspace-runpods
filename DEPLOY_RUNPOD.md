@@ -74,7 +74,44 @@ where it stopped. Use Secure Cloud only if you want an uninterrupted long run.
 
 ---
 
-## 3. Upload and bootstrap
+## 3. Run the pod FROM THE IMAGE (do not bootstrap)
+
+The rest of this document describes bootstrapping a bare pod. **Prefer this
+instead.** Two sessions were lost to hand-building the stack: the venv landed on
+a volume that cannot set exec bits, torch was installed for the wrong driver,
+flash-attn could not build without nvcc, and the end result was a CUDA/cuDNN
+mismatch that left a 4090 at a quarter of its matmul throughput and never
+finished a chapter — while reporting `cuda available: True` throughout.
+
+Serverless never had any of those problems, because serverless runs an image.
+So does this now:
+
+1. **Build it.** Push to `feat/per-job-language` (or run the workflow by hand)
+   and `.github/workflows/render-image.yml` builds `penspace/Dockerfile` on
+   GitHub's amd64 runners and pushes to
+   `ghcr.io/<owner>/penspace-runpods/render:latest`.
+2. **Deploy a pod** with that as its **Container Image**, and attach a volume
+   mounted at `/models` so the ~7GB of weights download once rather than per pod.
+3. **Check the GPU is real** — 60 seconds, before you trust anything:
+
+   ```bash
+   python -m penspace.cli doctor
+   ```
+
+4. **Run the worker**:
+
+   ```bash
+   python -m penspace.worker --api https://penspace.in/api --token "$AUDIO_WORKER_TOKEN"
+   ```
+
+`penspace/Dockerfile` now shares a base image with `Dockerfile.serverless` on
+purpose. Two images claiming to run the same code on different runtimes is
+exactly how "it works on serverless but not on a pod" happens — change them
+together or not at all.
+
+---
+
+## 3b (legacy). Upload and bootstrap
 
 Add your SSH public key under **Settings → SSH Public Keys** first, then take
 the connection command from the pod's **Connect** panel.
