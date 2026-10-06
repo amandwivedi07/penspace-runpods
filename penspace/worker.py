@@ -22,10 +22,12 @@ import signal
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
 from .config import Config
+from .netfix import ensure_resolvable
 from .runner import Runner, SummaryJob, prepare_clone
 from .storage import S3Storage
 
@@ -93,6 +95,11 @@ def main() -> int:
     import os
     if cfg.is_clone and not os.environ.get("PENSPACE_REF_TEXT"):
         log.warning("PENSPACE_REF_TEXT is not pinned — renders may not dedupe against S3.")
+
+    # Repair the resolver before anything tries to use it. A pod handed a dead
+    # upstream resolver fails here with a name-resolution error from whichever
+    # host it touches first, which reads like an S3 or Hugging Face outage.
+    ensure_resolvable(urllib.parse.urlparse(args.api).hostname, "huggingface.co")
 
     storage = S3Storage(cfg)
     try:
