@@ -64,6 +64,21 @@ ENV PENSPACE_ATTN=sdpa
 COPY penspace /app/penspace
 COPY penspace_ref.mp3 /app/penspace_ref.mp3
 
+# The second reference take, slate removed.
+#
+# penspace_ref.mp3 predates the recording the narrator actually supplied: same
+# script, a different take, and nobody could say from the waveform whether it
+# was even the same person — correlation between the two is 0.02, and pitch
+# alone cannot tell two similar voices apart. julian_ref.mp3 is the supplied
+# file, and it opens with "One play." — a take slate that would be cloned along
+# with the voice. This is that file from 0.82s, where the slate ends.
+#
+# Its transcript is identical to penspace_ref.mp3's, so PENSPACE_REF_TEXT does
+# not change when switching between them. Point PENSPACE_REF_AUDIO at
+# /app/julian_ref_clean.mp3 to use it. Both ship so a render can be compared
+# against either, and so switching back costs an env var rather than a rebuild.
+COPY julian_ref_clean.mp3 /app/julian_ref_clean.mp3
+
 # PENSPACE_WORK_DIR points here, and nothing else creates it. Without this the
 # worker dies on its first chapter with "No such file or directory" — which it
 # did, on a pod that was otherwise correct.
