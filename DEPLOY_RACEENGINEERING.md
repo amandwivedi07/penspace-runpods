@@ -1,7 +1,7 @@
 # Deploying Penspace rendering on raceengineering.ai
 
 How to render the Penspace book-summary catalog on a rented GPU pod, in the
-narrator voice cloned from `penspace_ref.mp3`.
+narrator voice cloned from `julian_ref_clean.mp3`.
 
 Rendering is a **batch job, not a service**. The pod is on for the length of a
 batch and off the rest of the time; the app only ever reads finished audio from
@@ -76,7 +76,7 @@ Add to `~/.bashrc` on the pod so every render uses the identical narrator:
 ```bash
 source /workspace/venv/bin/activate
 export HF_HOME=/workspace/hf-cache
-export PENSPACE_REF_AUDIO=/workspace/penspace_ref.mp3
+export PENSPACE_REF_AUDIO=/workspace/julian_ref_clean.mp3
 export PENSPACE_REF_TEXT="A mistake happens at work. Perhaps you forget an important detail, say the wrong thing in a meeting, or receive criticism you secretly feared was true. The event may last only a few minutes, but the mind continues it for hours."
 ```
 
