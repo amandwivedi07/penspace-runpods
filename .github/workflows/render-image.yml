@@ -30,6 +30,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Reclaim disk BEFORE anything writes to it.
+      #
+      # A hosted runner has ~14 GB free. This image unpacks the ~9 GB
+      # pytorch cuda-devel base, installs multi-gigabyte torch wheels on top and
+      # then compiles flash-attn, and the first attempt died partway through
+      # with "no space left on device" while buildkit was writing a gcc layer.
+      # The toolchains removed below are ~25 GB that this build never touches.
+      - name: Reclaim runner disk
+        run: |
+          echo "before:"; df -h / | tail -1
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+                      /usr/local/share/boost /usr/share/swift \
+                      /usr/local/.ghcup "$AGENT_TOOLSDIRECTORY" || true
+          sudo docker image prune -af || true
+          echo "after:"; df -h / | tail -1
+
       - uses: docker/setup-buildx-action@v3
 
       # GHCR rather than Docker Hub: the token already exists, there is no rate
