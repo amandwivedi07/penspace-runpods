@@ -24,6 +24,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .config import Config
@@ -71,6 +72,15 @@ def main() -> int:
     p.add_argument("--work-dir", default="/workspace/out")
     p.add_argument("--bucket", help="Overrides PENSPACE_S3_BUCKET")
     p.add_argument("--batch", type=int, default=1, help="Chapters to claim per poll")
+    p.add_argument(
+        "--concurrency", type=int, default=1,
+        help="Chapters to render at once. The pipeline alternates between GPU "
+             "decode and CPU work (BLAS, resampling, encoding), so a single "
+             "chapter leaves one of the two idle most of the time: measured on "
+             "a 4090, the GPU sat at 19W idle for ~30s of every ~130s chapter "
+             "while 3.3 CPU cores ran flat out. Overlapping chapters fills "
+             "both. Above 1 this shares one model across threads.",
+    )
     p.add_argument("--idle-sleep", type=int, default=15, help="Seconds to wait when nothing is queued")
     p.add_argument("--once", action="store_true", help="Drain the queue and exit")
     args = p.parse_args()
@@ -118,7 +128,8 @@ def main() -> int:
     while not _STOP:
         try:
             claim = _post(args.api, "/admin/audio-worker/claim", args.token,
-                          {"limit": args.batch, "workerId": f"pod-{os.uname().nodename}"})
+                          {"limit": max(args.batch, args.concurrency),
+                           "workerId": f"pod-{os.uname().nodename}"})
         except urllib.error.HTTPError as exc:
             if exc.code == 401:
                 log.error("worker token rejected — check AUDIO_WORKER_TOKEN on both sides")
@@ -139,8 +150,12 @@ def main() -> int:
             time.sleep(args.idle_sleep)
             continue
 
-        rows, failed = [], []
-        for job in jobs:
+        def _render_one(job):
+            """Render one chapter. Returns (row, failure); exactly one is None.
+
+            Never raises: a thread that dies takes its result with it, and the
+            backend would leave that chapter `running` until its timeout.
+            """
             started = time.time()
             try:
                 result = runner.render(
@@ -160,8 +175,6 @@ def main() -> int:
                 )
                 row = result.to_dict()
                 row["skipped"] = result.skipped
-                rows.append(row)
-                rendered_total += 1
                 log.info(
                     "%s %s — %.1fs audio in %.0fs wall",
                     "skipped (already rendered)" if result.skipped else "rendered",
@@ -169,9 +182,28 @@ def main() -> int:
                     result.duration,
                     time.time() - started,
                 )
+                return row, None
             except Exception as exc:  # noqa: BLE001
                 log.exception("render failed for %s", job["id"])
-                failed.append({"id": job["id"], "error": f"{type(exc).__name__}: {exc}"})
+                return None, {"id": job["id"], "error": f"{type(exc).__name__}: {exc}"}
+
+        rows, failed = [], []
+        lanes = max(1, min(args.concurrency, len(jobs)))
+        if lanes == 1:
+            # Kept as a plain loop rather than a one-worker pool so the default
+            # path has no thread between the signal handler and the render.
+            results = [_render_one(job) for job in jobs]
+        else:
+            log.info("rendering %d chapter(s) across %d lanes", len(jobs), lanes)
+            with ThreadPoolExecutor(max_workers=lanes) as pool:
+                results = list(pool.map(_render_one, jobs))
+
+        for row, failure in results:
+            if row is not None:
+                rows.append(row)
+                rendered_total += 1
+            if failure is not None:
+                failed.append(failure)
 
         # Reported even when everything failed, so the panel stops showing
         # "Rendering…" and says what went wrong instead.
