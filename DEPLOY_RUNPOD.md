@@ -159,6 +159,11 @@ python -m penspace.cli render \
 Exit code `2` means some chunks never passed QA; the failing ids print to
 stderr. Everything else still rendered.
 
+**If anything tells you to `export PENSPACE_ATTN=sdpa`, do not.** That is the
+fallback path, and it measured 737 seconds to produce 5.8 seconds of audio --
+about 1% of normal speed. `bootstrap.sh` now installs a prebuilt flash-attn
+wheel and refuses to finish without one.
+
 CUDA settings resolve automatically: bf16, FlashAttention 2, and the batch size
 un-caps from the Apple-Silicon limit of 4 back to 8.
 

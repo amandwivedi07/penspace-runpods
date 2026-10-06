@@ -51,7 +51,15 @@ def run(cfg) -> int:
     print("PENSPACE DOCTOR")
     print("=" * 62)
 
+    try:
+        import flash_attn
+
+        flash = f"{flash_attn.__version__}"
+    except Exception:  # noqa: BLE001 - absence is the finding, not an error
+        flash = "MISSING -- the model falls back to its 'manual PyTorch' path"
+
     print(f"\ntorch            {torch.__version__}  (built for CUDA {torch.version.cuda})")
+    print(f"flash-attn       {flash}")
     print(f"cuda available   {torch.cuda.is_available()}")
     if not torch.cuda.is_available():
         print("\nFAIL: no CUDA. Every render would run on the CPU.")
@@ -110,6 +118,16 @@ def run(cfg) -> int:
     print(f"  REALTIME       {audio_seconds / wall:.2f}x")
 
     print("\n" + "=" * 62)
+    realtime = audio_seconds / wall
+    if realtime < 1.0:
+        print(f"VERDICT: {realtime:.2f}x realtime — too slow to be worth renting.")
+        if flash.startswith("MISSING"):
+            # Measured: 737s for 5.8s of audio on SDPA, against the same model
+            # and GPU running normally with flash-attn. Check this first.
+            print("\nflash-attn is MISSING, and that is almost certainly why.")
+            print("Install the prebuilt wheel (see bootstrap.sh) and measure again")
+            print("before concluding anything about this model or this GPU.")
+        return 2
     if gpu_seconds / wall < 0.5:
         print("VERDICT: the GPU is barely involved. Most of the time is CPU work,")
         print("so renting a faster card will not help — find the CPU path first.")

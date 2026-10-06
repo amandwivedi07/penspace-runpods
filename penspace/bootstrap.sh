@@ -104,15 +104,63 @@ else:
     sys.exit(1)
 PY
 
-log "FlashAttention 2 (optional, CUDA only)"
-# Builds from source and is slow. If it fails the pipeline falls back to SDPA,
-# which is correct but uses more memory.
+log "FlashAttention 2 (REQUIRED -- not optional)"
+# This used to say "optional" and, on failure, told you to export
+# PENSPACE_ATTN=sdpa and carry on. That advice is what hid a 100x slowdown:
+# without flash_attn the model falls back to what it calls "the manual PyTorch
+# version", and a measured probe took 737 seconds to produce 5.8 seconds of
+# audio -- 0.01x realtime. The same code on the serverless Docker image, which
+# ships flash_attn, is fast. That one difference explains every "it worked on
+# Tuesday and not on Thursday".
+#
+# These images carry no nvcc, so a source build CANNOT succeed here. Install
+# the prebuilt wheel matching this interpreter, this torch and this C++ ABI.
 if python -c "import flash_attn" 2>/dev/null; then
     echo "already installed"
-elif MAX_JOBS=4 pip install -q -U flash-attn --no-build-isolation 2>/dev/null; then
-    echo "installed"
 else
-    echo "build failed -- export PENSPACE_ATTN=sdpa before rendering"
+    WHEEL_URL="$(python - <<'PY'
+import os, sys, torch
+
+version = os.environ.get("PENSPACE_FLASH_ATTN_VERSION", "2.8.3.post1")
+tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+torch_mm = ".".join(torch.__version__.split("+")[0].split(".")[:2])
+abi = "TRUE" if torch._C._GLIBCXX_USE_CXX11_ABI else "FALSE"
+print(
+    f"https://github.com/Dao-AILab/flash-attention/releases/download/v{version}/"
+    f"flash_attn-{version}+cu12torch{torch_mm}cxx11abi{abi}-{tag}-{tag}-linux_x86_64.whl"
+)
+PY
+)"
+    echo "prebuilt wheel: $WHEEL_URL"
+    if pip install -q "$WHEEL_URL" 2>/dev/null && python -c "import flash_attn" 2>/dev/null; then
+        echo "installed (prebuilt)"
+    elif MAX_JOBS=4 pip install -q -U flash-attn --no-build-isolation 2>/dev/null; then
+        echo "installed (built from source)"
+    elif [ "${PENSPACE_ALLOW_SDPA:-0}" = "1" ]; then
+        echo "WARNING: no flash_attn, continuing on SDPA because PENSPACE_ALLOW_SDPA=1."
+        echo "         Expect roughly 100x slower rendering. You have been told."
+    else
+        cat >&2 <<'MSG'
+
+FLASH-ATTENTION COULD NOT BE INSTALLED, AND THIS IS FATAL.
+
+Without it the model renders at roughly 1% of its normal speed -- slow enough
+that a single chapter costs more in GPU time than the whole catalogue costs on
+a hosted API. Stopping here is deliberate: the previous version of this script
+printed a warning and carried on, and that is how the slowdown went unnoticed.
+
+Either pin a wheel that exists for this interpreter/torch pair:
+
+    PENSPACE_FLASH_ATTN_VERSION=<version> bash penspace/bootstrap.sh
+
+(see https://github.com/Dao-AILab/flash-attention/releases), or accept the
+penalty knowingly:
+
+    PENSPACE_ALLOW_SDPA=1 bash penspace/bootstrap.sh
+
+MSG
+        exit 1
+    fi
 fi
 
 log "Pre-downloading model weights to $HF_HOME"
