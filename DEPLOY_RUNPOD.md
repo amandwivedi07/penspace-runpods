@@ -99,6 +99,24 @@ RunPod also offers `runpodctl` for file transfer if you prefer it to `scp`.
 
 ---
 
+## 3b. Check the GPU is actually being used
+
+```bash
+python -m penspace.cli doctor
+```
+
+**Do this before rendering anything.** A pod once reported `cuda available:
+True`, loaded the model into 3.9 GB of VRAM, and then generated at 0% GPU and
+130% CPU — a hundredth of the expected speed, while billing GPU rates. Nothing
+in the normal logs said so; everything looked right.
+
+`doctor` times the generate call with CUDA events and compares that against the
+wall clock. If the GPU accounts for less than half the time, it says so and
+exits non-zero. It also prints the realtime factor, which is the only number
+that decides whether renting a GPU beats paying per character.
+
+---
+
 ## 4. Pin the voice
 
 Add to `~/.bashrc` on the pod:
