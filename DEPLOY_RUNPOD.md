@@ -161,7 +161,7 @@ Add to `~/.bashrc` on the pod:
 ```bash
 source /workspace/venv/bin/activate
 export HF_HOME=/workspace/hf-cache
-export PENSPACE_REF_AUDIO=/workspace/penspace_ref.mp3
+export PENSPACE_REF_AUDIO=/workspace/julian_ref_clean.mp3
 export PENSPACE_REF_TEXT="A mistake happens at work. Perhaps you forget an important detail, say the wrong thing in a meeting, or receive criticism you secretly feared was true. The event may last only a few minutes, but the mind continues it for hours."
 ```
 

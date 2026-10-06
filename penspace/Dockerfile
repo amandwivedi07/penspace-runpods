@@ -62,41 +62,20 @@ ENV PENSPACE_ATTN=sdpa
 # after that starts immediately.
 
 COPY penspace /app/penspace
-COPY penspace_ref.mp3 /app/penspace_ref.mp3
-
-# The second reference take, slate removed.
+# The reference recording for voice cloning, baked in so the voice cannot drift
+# between pods and so a pod needs no volume mounted just to hold one small file.
 #
-# penspace_ref.mp3 predates the recording the narrator actually supplied: same
-# script, a different take, and nobody could say from the waveform whether it
-# was even the same person — correlation between the two is 0.02, and pitch
-# alone cannot tell two similar voices apart. julian_ref.mp3 is the supplied
-# file, and it opens with "One play." — a take slate that would be cloned along
-# with the voice. This is that file from 0.82s, where the slate ends.
+# This is the narrator's own take with its "One play." slate trimmed off at
+# 0.82s. It replaced penspace_ref.mp3, a different take of the same script that
+# had been committed two months earlier and that every chapter up to this point
+# was cloned from. Nothing in the audio could settle whether the two were even
+# the same person — correlation between them was 0.02, and pitch and spread
+# cannot tell two similar male voices apart — so the question was settled by
+# listening, and the older file is gone to stop the two being confused again.
 #
-# Its transcript is identical to penspace_ref.mp3's, so PENSPACE_REF_TEXT does
-# not change when switching between them. Point PENSPACE_REF_AUDIO at
-# /app/julian_ref_clean.mp3 to use it. Both ship so a render can be compared
-# against either, and so switching back costs an env var rather than a rebuild.
+# Chapters rendered before this keep their audio in S3; only a re-render picks
+# up the new voice, because the reference is part of the render fingerprint.
 COPY julian_ref_clean.mp3 /app/julian_ref_clean.mp3
-
-# Two references cut from a rendered narration, not from a recording of anyone.
-#
-# These are OUTPUT: audio this pipeline produced earlier. Cloning from them
-# clones a clone, and the drift is measurable — a clip taken from the long one
-# has a pitch spread of 38.6 Hz against the 32.6 Hz of the recording it
-# descends from, and 69.5% voiced frames against 59.8%. Each generation
-# compounds that. They ship because they were asked for and because judging
-# them needs a render, not an argument; the transcripts beside them in refs/
-# are what PENSPACE_REF_TEXT must be set to, exactly.
-#
-#   /app/hf_ref_30s.mp3   31.8s, cut on a sentence boundary  -> refs/hf_ref_30s.txt
-#   /app/hf_ref_full.mp3  166.3s, the whole file             -> refs/hf_ref_full.txt
-#
-# Prefer the 30s one. Cloning wants roughly 10-30 seconds of clean speech;
-# past that it adds little and the prompt gets expensive to build.
-COPY hf_ref_30s.mp3 /app/hf_ref_30s.mp3
-COPY hf_ref_full.mp3 /app/hf_ref_full.mp3
-COPY refs /app/refs
 
 # PENSPACE_WORK_DIR points here, and nothing else creates it. Without this the
 # worker dies on its first chapter with "No such file or directory" — which it

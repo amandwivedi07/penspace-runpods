@@ -79,8 +79,10 @@ COPY penspace /app/penspace
 
 # The reference recording for voice cloning. Baked in so the voice cannot drift
 # between workers, and so an endpoint needs no volume mounted just to hold one
-# 284 KB file.
-COPY penspace_ref.mp3 /app/penspace_ref.mp3
+# small file. This is the narrator's own take, slate trimmed; it replaced
+# penspace_ref.mp3, a different take that predated it. Set PENSPACE_REF_AUDIO
+# to /app/julian_ref_clean.mp3.
+COPY julian_ref_clean.mp3 /app/julian_ref_clean.mp3
 
 RUN mkdir -p /work
 
