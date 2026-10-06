@@ -304,7 +304,7 @@ class Runner:
 
     def render(self, job: SummaryJob) -> RenderResult:
         text = normalize(job.text)
-        chunks = chunk_text(text, self.cfg.max_chunk_chars)
+        chunks = chunk_text(text, self.cfg.max_chunk_chars, self.cfg.heading_max_chars)
         if not chunks:
             raise ValueError(f"{job.id}: no text to synthesize after normalization")
 
@@ -421,7 +421,7 @@ def audition(
     import soundfile as sf
 
     normalized = normalize(text)
-    chunks = chunk_text(normalized, cfg.max_chunk_chars)
+    chunks = chunk_text(normalized, cfg.max_chunk_chars, cfg.heading_max_chars)
     if not chunks:
         raise ValueError("no text to synthesize after normalization")
 
@@ -476,7 +476,7 @@ def estimate(jobs: List[SummaryJob], cfg: Config) -> dict:
 
     for job in jobs:
         text = normalize(job.text)
-        chunks = chunk_text(text, cfg.max_chunk_chars)
+        chunks = chunk_text(text, cfg.max_chunk_chars, cfg.heading_max_chars)
         chars = sum(len(c.text) for c in chunks)
         total_chunks += len(chunks)
         total_chars += chars
