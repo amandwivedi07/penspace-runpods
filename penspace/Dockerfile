@@ -64,6 +64,11 @@ ENV PENSPACE_ATTN=sdpa
 COPY penspace /app/penspace
 COPY penspace_ref.mp3 /app/penspace_ref.mp3
 
+# PENSPACE_WORK_DIR points here, and nothing else creates it. Without this the
+# worker dies on its first chapter with "No such file or directory" — which it
+# did, on a pod that was otherwise correct.
+RUN mkdir -p /work
+
 # No ENTRYPOINT on purpose. A pod runs either the pull worker or the batch CLI,
 # and which one is a runtime decision:
 #
