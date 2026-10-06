@@ -77,6 +77,24 @@ COPY penspace /app/penspace
 # up the new voice, because the reference is part of the render fingerprint.
 COPY julian_ref_clean.mp3 /app/julian_ref_clean.mp3
 
+# Julian, as rendered by Cartesia (Sonic 3.6) — the voice chosen after
+# listening, used as the cloning reference.
+#
+# This is SYNTHETIC: Cartesia's own clone of the narrator, so the renderer
+# imitates that rendition rather than the recording behind it. It was chosen
+# for how it sounds; whether a clone of a clone holds up across a catalogue is
+# what the first renders are for.
+#
+# Cut to the whole first paragraph of the Who Will Cry When You Die?
+# introduction — 2.844s to 28.579s, 25.7s, at the quietest frame in each gap,
+# with 20ms fades. The title line before it is left out: a reference teaches
+# the voice, and a book title read as a header would be learned as part of it.
+#
+# PENSPACE_REF_TEXT for this clip is julian_ref_cartesia.txt, word for word,
+# and it differs from julian_ref_clean.mp3's. Switch both together.
+COPY julian_ref_cartesia.mp3 /app/julian_ref_cartesia.mp3
+COPY julian_ref_cartesia.txt /app/julian_ref_cartesia.txt
+
 # PENSPACE_WORK_DIR points here, and nothing else creates it. Without this the
 # worker dies on its first chapter with "No such file or directory" — which it
 # did, on a pod that was otherwise correct.
