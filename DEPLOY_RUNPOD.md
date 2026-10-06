@@ -74,7 +74,44 @@ where it stopped. Use Secure Cloud only if you want an uninterrupted long run.
 
 ---
 
-## 3. Upload and bootstrap
+## 3. Run the pod FROM THE IMAGE (do not bootstrap)
+
+The rest of this document describes bootstrapping a bare pod. **Prefer this
+instead.** Two sessions were lost to hand-building the stack: the venv landed on
+a volume that cannot set exec bits, torch was installed for the wrong driver,
+flash-attn could not build without nvcc, and the end result was a CUDA/cuDNN
+mismatch that left a 4090 at a quarter of its matmul throughput and never
+finished a chapter — while reporting `cuda available: True` throughout.
+
+Serverless never had any of those problems, because serverless runs an image.
+So does this now:
+
+1. **Build it.** Push to `feat/per-job-language` (or run the workflow by hand)
+   and `.github/workflows/render-image.yml` builds `penspace/Dockerfile` on
+   GitHub's amd64 runners and pushes to
+   `ghcr.io/<owner>/penspace-runpods/render:latest`.
+2. **Deploy a pod** with that as its **Container Image**, and attach a volume
+   mounted at `/models` so the ~7GB of weights download once rather than per pod.
+3. **Check the GPU is real** — 60 seconds, before you trust anything:
+
+   ```bash
+   python -m penspace.cli doctor
+   ```
+
+4. **Run the worker**:
+
+   ```bash
+   python -m penspace.worker --api https://penspace.in/api --token "$AUDIO_WORKER_TOKEN"
+   ```
+
+`penspace/Dockerfile` now shares a base image with `Dockerfile.serverless` on
+purpose. Two images claiming to run the same code on different runtimes is
+exactly how "it works on serverless but not on a pod" happens — change them
+together or not at all.
+
+---
+
+## 3b (legacy). Upload and bootstrap
 
 Add your SSH public key under **Settings → SSH Public Keys** first, then take
 the connection command from the pod's **Connect** panel.
@@ -96,6 +133,24 @@ pre-downloads the weights.
 §4, because the venv and `hf-cache` are already on the volume.
 
 RunPod also offers `runpodctl` for file transfer if you prefer it to `scp`.
+
+---
+
+## 3b. Check the GPU is actually being used
+
+```bash
+python -m penspace.cli doctor
+```
+
+**Do this before rendering anything.** A pod once reported `cuda available:
+True`, loaded the model into 3.9 GB of VRAM, and then generated at 0% GPU and
+130% CPU — a hundredth of the expected speed, while billing GPU rates. Nothing
+in the normal logs said so; everything looked right.
+
+`doctor` times the generate call with CUDA events and compares that against the
+wall clock. If the GPU accounts for less than half the time, it says so and
+exits non-zero. It also prints the realtime factor, which is the only number
+that decides whether renting a GPU beats paying per character.
 
 ---
 
@@ -140,6 +195,11 @@ python -m penspace.cli render \
 
 Exit code `2` means some chunks never passed QA; the failing ids print to
 stderr. Everything else still rendered.
+
+**If anything tells you to `export PENSPACE_ATTN=sdpa`, do not.** That is the
+fallback path, and it measured 737 seconds to produce 5.8 seconds of audio --
+about 1% of normal speed. `bootstrap.sh` now installs a prebuilt flash-attn
+wheel and refuses to finish without one.
 
 CUDA settings resolve automatically: bf16, FlashAttention 2, and the batch size
 un-caps from the Apple-Silicon limit of 4 back to 8.

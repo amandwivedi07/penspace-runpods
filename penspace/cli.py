@@ -64,6 +64,14 @@ def _select(jobs, args):
     return jobs
 
 
+def cmd_doctor(args) -> int:
+    from .doctor import run
+
+    from .runner import prepare_clone
+
+    return run(prepare_clone(_apply_overrides(Config.from_env(), args)))
+
+
 def cmd_estimate(args) -> int:
     cfg = _apply_overrides(Config.from_env(), args)
     jobs = _select(load_manifest(Path(args.manifest)), args)
@@ -201,6 +209,13 @@ def build_parser() -> argparse.ArgumentParser:
             action="store_true",
             help="clone from the speaker embedding alone; no transcript, lower fidelity",
         )
+
+    doc = sub.add_parser(
+        "doctor",
+        help="is this pod actually rendering on the GPU? (one minute, no manifest)",
+    )
+    add_common(doc)
+    doc.set_defaults(func=cmd_doctor)
 
     est = sub.add_parser("estimate", help="chunk the manifest without using a GPU")
     est.add_argument("--manifest", required=True)

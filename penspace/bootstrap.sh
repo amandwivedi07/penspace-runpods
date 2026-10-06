@@ -13,16 +13,31 @@
 
 set -euo pipefail
 
-WORKSPACE="${WORKSPACE:-/workspace}"
-VENV="$WORKSPACE/venv"
+# WHERE THINGS GO.
+#
+# The venv and the HF cache go on CONTAINER DISK, not on the mounted volume.
+# RunPod's "Global" network volumes cannot set exec bits, so `python -m venv`
+# there produces a venv whose `activate` does not exist, and they have twice
+# corrupted downloaded model files. Only the OUTPUTS go on the volume, which is
+# all it is good for.
+#
+# Override WORKSPACE if your pod genuinely keeps a real (non-Global) volume.
+WORKSPACE="${WORKSPACE:-/root}"
+VENV="${PENSPACE_VENV:-$WORKSPACE/venv}"
 export HF_HOME="${HF_HOME:-$WORKSPACE/hf-cache}"
+
+# pip's default cache follows $HOME, which on RunPod images points at the
+# volume it cannot write to. Every install then re-downloads with a warning.
+export PIP_CACHE_DIR="${PIP_CACHE_DIR:-$WORKSPACE/.cache/pip}"
+
+# The image sets this, and the package is not installed, so every single
+# weight download dies with "Fast download using hf_transfer is enabled but
+# hf_transfer is not available".
+export HF_HUB_ENABLE_HF_TRANSFER=0
 
 log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 
-if [ ! -d "$WORKSPACE" ]; then
-    echo "No $WORKSPACE directory. Set WORKSPACE=... if your pod differs." >&2
-    exit 1
-fi
+mkdir -p "$WORKSPACE" "$PIP_CACHE_DIR"
 
 log "GPU"
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader || {
@@ -52,25 +67,100 @@ log "Dependencies"
 pip install -q -r "$(dirname "$0")/requirements.txt"
 pip install -q python-docx  # for the ingest command
 
+# TORCH MUST MATCH THE POD'S DRIVER, AND NOTHING ELSE PINS IT.
+#
+# Plain `pip install torch` takes the newest build, which is compiled against
+# the newest CUDA. A pod running driver 12.8 then loads it, reports
+# `cuda available: False`, and every render silently runs on the CPU at
+# roughly a hundredth of the speed. That has now cost two separate sessions.
+#
+# Read the driver and install the matching wheel rather than assuming either.
+TORCH_VERSION="${PENSPACE_TORCH_VERSION:-2.8.0}"
+DRIVER_CUDA="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1 | cut -d. -f1)"
+if [ "${DRIVER_CUDA:-0}" -ge 580 ]; then
+    TORCH_INDEX="cu130"
+else
+    TORCH_INDEX="cu128"
+fi
+log "PyTorch $TORCH_VERSION+$TORCH_INDEX (driver major $DRIVER_CUDA)"
+pip install -q --force-reinstall \
+    "torch==$TORCH_VERSION" "torchaudio==$TORCH_VERSION" \
+    --index-url "https://download.pytorch.org/whl/$TORCH_INDEX"
+
 log "PyTorch / CUDA"
 python - <<'PY'
+import sys
 import torch
 print("torch", torch.__version__, "cuda", torch.version.cuda)
 print("cuda available:", torch.cuda.is_available())
 if torch.cuda.is_available():
     print("device:", torch.cuda.get_device_name(0))
     print("capability:", torch.cuda.get_device_capability(0))
+else:
+    # Stopping here is the point. Carrying on gives a pod that renders on the
+    # CPU while billing GPU rates, which looks like "slow" rather than "wrong".
+    print("\nCUDA IS NOT USABLE. The torch build does not match this driver.", file=sys.stderr)
+    print("Set PENSPACE_TORCH_VERSION / re-run, or check nvidia-smi.", file=sys.stderr)
+    sys.exit(1)
 PY
 
-log "FlashAttention 2 (optional, CUDA only)"
-# Builds from source and is slow. If it fails the pipeline falls back to SDPA,
-# which is correct but uses more memory.
+log "FlashAttention 2 (REQUIRED -- not optional)"
+# This used to say "optional" and, on failure, told you to export
+# PENSPACE_ATTN=sdpa and carry on. That advice is what hid a 100x slowdown:
+# without flash_attn the model falls back to what it calls "the manual PyTorch
+# version", and a measured probe took 737 seconds to produce 5.8 seconds of
+# audio -- 0.01x realtime. The same code on the serverless Docker image, which
+# ships flash_attn, is fast. That one difference explains every "it worked on
+# Tuesday and not on Thursday".
+#
+# These images carry no nvcc, so a source build CANNOT succeed here. Install
+# the prebuilt wheel matching this interpreter, this torch and this C++ ABI.
 if python -c "import flash_attn" 2>/dev/null; then
     echo "already installed"
-elif MAX_JOBS=4 pip install -q -U flash-attn --no-build-isolation 2>/dev/null; then
-    echo "installed"
 else
-    echo "build failed -- export PENSPACE_ATTN=sdpa before rendering"
+    WHEEL_URL="$(python - <<'PY'
+import os, sys, torch
+
+version = os.environ.get("PENSPACE_FLASH_ATTN_VERSION", "2.8.3.post1")
+tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+torch_mm = ".".join(torch.__version__.split("+")[0].split(".")[:2])
+abi = "TRUE" if torch._C._GLIBCXX_USE_CXX11_ABI else "FALSE"
+print(
+    f"https://github.com/Dao-AILab/flash-attention/releases/download/v{version}/"
+    f"flash_attn-{version}+cu12torch{torch_mm}cxx11abi{abi}-{tag}-{tag}-linux_x86_64.whl"
+)
+PY
+)"
+    echo "prebuilt wheel: $WHEEL_URL"
+    if pip install -q "$WHEEL_URL" 2>/dev/null && python -c "import flash_attn" 2>/dev/null; then
+        echo "installed (prebuilt)"
+    elif MAX_JOBS=4 pip install -q -U flash-attn --no-build-isolation 2>/dev/null; then
+        echo "installed (built from source)"
+    elif [ "${PENSPACE_ALLOW_SDPA:-0}" = "1" ]; then
+        echo "WARNING: no flash_attn, continuing on SDPA because PENSPACE_ALLOW_SDPA=1."
+        echo "         Expect roughly 100x slower rendering. You have been told."
+    else
+        cat >&2 <<'MSG'
+
+FLASH-ATTENTION COULD NOT BE INSTALLED, AND THIS IS FATAL.
+
+Without it the model renders at roughly 1% of its normal speed -- slow enough
+that a single chapter costs more in GPU time than the whole catalogue costs on
+a hosted API. Stopping here is deliberate: the previous version of this script
+printed a warning and carried on, and that is how the slowdown went unnoticed.
+
+Either pin a wheel that exists for this interpreter/torch pair:
+
+    PENSPACE_FLASH_ATTN_VERSION=<version> bash penspace/bootstrap.sh
+
+(see https://github.com/Dao-AILab/flash-attention/releases), or accept the
+penalty knowingly:
+
+    PENSPACE_ALLOW_SDPA=1 bash penspace/bootstrap.sh
+
+MSG
+        exit 1
+    fi
 fi
 
 log "Pre-downloading model weights to $HF_HOME"
