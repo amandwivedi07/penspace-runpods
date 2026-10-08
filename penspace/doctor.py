@@ -85,6 +85,19 @@ def run(cfg) -> int:
 
     print("\nWEIGHTS BY DEVICE")
     placement = _device_report(synth._model)
+    # The decoder is not reachable through the model's parameters (it is not
+    # a registered submodule), so it has to be reported on its own. Leaving it
+    # out is what made an earlier run report "all weights on cuda:0" while a
+    # 154M-parameter decoder ran on the CPU.
+    _tok = getattr(getattr(synth._model, "model", None), "speech_tokenizer", None)
+    if _tok is not None and getattr(_tok, "model", None) is not None:
+        _p = next(_tok.model.parameters())
+        _n = sum(p.numel() for p in _tok.model.parameters())
+        print(f"  decoder      {_n / 1e6:8.1f}M params on {_p.device} ({_p.dtype})")
+        if _p.device.type == "cpu" and synth.device != "cpu":
+            print("  WARNING: the decoder runs on the CPU while the model is on "
+                  f"{synth.device}. Every sentence is decoded there. "
+                  "PENSPACE_DECODER_DEVICE=model moves it.")
     for device, count in sorted(placement.items(), key=lambda kv: -kv[1]):
         print(f"  {device:12s} {count / 1e6:8.1f}M params")
     on_cpu = sum(n for d, n in placement.items() if d.startswith("cpu"))
