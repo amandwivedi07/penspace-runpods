@@ -200,6 +200,9 @@ class Runner:
                 str(self.cfg.target_lufs),
                 self.cfg.bitrate,
             ]
+            # Only when it is in use, so every render made at the model's own
+            # pace keeps the id (and S3 key) it already has.
+            + ([f"rate={self.cfg.speech_rate}"] if self.cfg.speech_rate != 1.0 else [])
         )
         return hashlib.sha256(fingerprint.encode()).hexdigest()[:12]
 

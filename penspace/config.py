@@ -110,6 +110,11 @@ class Config:
     one_sentence_per_chunk: bool = True
     lead_in_ms: int = 200
     tail_ms: int = 400
+    # Tempo of the spoken words, pitch unchanged: 0.95 is 5% slower. Applied
+    # to each sentence after trimming, so the configured pauses stay exactly
+    # as set and timing.json follows the stretched audio. 1.0 leaves the
+    # model's own pace untouched (no processing at all).
+    speech_rate: float = 1.0
 
     # --- QA gate ---
     qa_enabled: bool = True
@@ -179,6 +184,9 @@ class Config:
         )
         c.lead_in_ms = _env_int("PENSPACE_LEAD_IN_MS", c.lead_in_ms)
         c.tail_ms = _env_int("PENSPACE_TAIL_MS", c.tail_ms)
+        c.speech_rate = _env_float("PENSPACE_SPEECH_RATE", c.speech_rate)
+        if not 0.5 <= c.speech_rate <= 2.0:
+            raise ValueError(f"PENSPACE_SPEECH_RATE must be 0.5–2.0, got {c.speech_rate}")
         c.qa_enabled = _env_bool("PENSPACE_QA", c.qa_enabled)
         c.whisper_model = _env_str("PENSPACE_WHISPER_MODEL", c.whisper_model)
         c.max_wer = _env_float("PENSPACE_MAX_WER", c.max_wer)
