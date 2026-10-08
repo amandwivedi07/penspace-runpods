@@ -72,10 +72,10 @@ class _GpuSampler(threading.Thread):
 
     def __init__(self):
         super().__init__(daemon=True)
-        self.util, self.power, self._stop = [], [], threading.Event()
+        self.util, self.power, self._halt = [], [], threading.Event()
 
     def run(self):
-        while not self._stop.is_set():
+        while not self._halt.is_set():
             try:
                 out = subprocess.run(
                     ["nvidia-smi", "--query-gpu=utilization.gpu,power.draw",
@@ -85,10 +85,10 @@ class _GpuSampler(threading.Thread):
                 self.util.append(u); self.power.append(p)
             except Exception:
                 return
-            self._stop.wait(0.5)
+            self._halt.wait(0.5)
 
     def stop(self):
-        self._stop.set(); self.join(timeout=2)
+        self._halt.set(); self.join(timeout=2)
         avg = lambda xs: round(sum(xs) / len(xs), 1) if xs else None
         return avg(self.util), avg(self.power)
 
