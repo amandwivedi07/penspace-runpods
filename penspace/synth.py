@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -35,6 +36,8 @@ class Synthesizer:
         self._torch = None
         self._device = None
         self._clone_prompt = None
+        # Seconds spent in the speech decoder since load; callers diff it.
+        self.decode_seconds = 0.0
 
     @property
     def device(self) -> str:
@@ -83,6 +86,21 @@ class Synthesizer:
                 tokenizer.device = torch.device(device)
             params = next(tokenizer.model.parameters())
             log.info("speech tokenizer (decoder) on %s, %s", params.device, params.dtype)
+
+            # Accumulate time spent turning codes into waveforms, so each
+            # chapter can report how much of its synthesis was decode. No
+            # explicit synchronize: decode hands back host arrays, which
+            # already waits for the GPU.
+            decode = tokenizer.decode
+
+            def timed_decode(*args, **kwargs):
+                started = time.perf_counter()
+                try:
+                    return decode(*args, **kwargs)
+                finally:
+                    self.decode_seconds += time.perf_counter() - started
+
+            tokenizer.decode = timed_decode
 
         if self.cfg.is_clone:
             if not self.cfg.ref_audio:

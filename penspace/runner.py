@@ -313,6 +313,7 @@ class Runner:
     # --- per-summary -------------------------------------------------------
 
     def render(self, job: SummaryJob) -> RenderResult:
+        started = time.perf_counter()
         text = normalize(job.text)
         chunks = chunk_text(text, self.cfg.max_chunk_chars, self.cfg.heading_max_chars, self.cfg.one_sentence_per_chunk)
         if not chunks:
@@ -347,14 +348,29 @@ class Runner:
             )
 
         log.info("%s: %d chunks (render %s)", job.id, len(chunks), render_id)
+        # Where each chapter's wall time goes. Synthesis is split into decode
+        # (codes -> waveform) and the rest (generation, mostly), because the
+        # two compete for different hardware depending on decoder_device.
+        # "generate" also holds Whisper QA and its retries when QA is on.
+        stages = {"prepare": time.perf_counter() - started}
+        decode_before = self.synth.decode_seconds
+        mark = time.perf_counter()
         audios, failed, worst_wer = self._synthesize_chunks(out_dir, chunks, language)
+        synth_s = time.perf_counter() - mark
+        stages["decode"] = self.synth.decode_seconds - decode_before
+        stages["generate"] = synth_s - stages["decode"]
 
+        mark = time.perf_counter()
         wav, sample_rate, timings = audio_mod.assemble(
             list(audios.values()), chunks, self.cfg
         )
+        stages["assemble"] = time.perf_counter() - mark
+        mark = time.perf_counter()
         wav = audio_mod.master(wav, sample_rate, self.cfg)
+        stages["master"] = time.perf_counter() - mark
         duration = len(wav) / sample_rate
 
+        mark = time.perf_counter()
         audio_mod.encode(
             wav, sample_rate, audio_path, self.cfg, title=job.title, artist=job.author
         )
@@ -377,9 +393,15 @@ class Runner:
             },
         )
 
+        stages["encode"] = time.perf_counter() - mark
+
+        mark = time.perf_counter()
         if self.storage:
             self.storage.upload(audio_path, audio_key)
             self.storage.upload(timing_path, timing_key)
+        stages["upload"] = time.perf_counter() - mark
+        self._log_stages(job.id, render_id, text, len(chunks), duration, stages,
+                         time.perf_counter() - started)
 
         if failed:
             log.error(
@@ -401,6 +423,18 @@ class Runner:
             timing_key=timing_key,
             failed_chunks=failed,
             max_wer=worst_wer,
+        )
+
+    def _log_stages(self, job_id, render_id, text, chunk_count, duration, stages, wall):
+        """One greppable line per chapter: `stages` plus the derived rates."""
+        chars = len(text)
+        line = " ".join(f"{name}={secs:.1f}s" for name, secs in stages.items())
+        log.info(
+            "stages %s render=%s chars=%d chunks=%d audio=%.1fs wall=%.1fs "
+            "chars_per_s=%.1f realtime=%.1fx batch=%d %s",
+            job_id, render_id, chars, chunk_count, duration, wall,
+            chars / wall if wall else 0.0, duration / wall if wall else 0.0,
+            self.cfg.batch_size, line,
         )
 
     def run(self, jobs: List[SummaryJob]) -> List[RenderResult]:
