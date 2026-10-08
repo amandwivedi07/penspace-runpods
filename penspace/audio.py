@@ -50,6 +50,28 @@ def _trim(wav: np.ndarray) -> np.ndarray:
     return trimmed if trimmed.size else wav
 
 
+def _stretch(wav: np.ndarray, sample_rate: int, rate: float) -> np.ndarray:
+    """Change tempo by [rate] without changing pitch (ffmpeg atempo, WSOLA).
+
+    Runs per sentence, on the trimmed speech only, so silences inserted
+    afterwards are never stretched.
+    """
+    if rate == 1.0 or wav.size == 0:
+        return wav
+    out = subprocess.run(
+        [
+            "ffmpeg", "-v", "error",
+            "-f", "f32le", "-ar", str(sample_rate), "-ac", "1", "-i", "pipe:0",
+            "-filter:a", f"atempo={rate}",
+            "-f", "f32le", "-ar", str(sample_rate), "-ac", "1", "pipe:1",
+        ],
+        input=np.ascontiguousarray(wav, dtype=np.float32).tobytes(),
+        capture_output=True,
+        check=True,
+    ).stdout
+    return np.frombuffer(out, dtype=np.float32).copy()
+
+
 def assemble(
     audios: List[ChunkAudio],
     chunks: List[Chunk],
@@ -68,7 +90,7 @@ def assemble(
         if audio is None:
             raise KeyError(f"missing audio for chunk {chunk.index}")
 
-        wav = _trim(audio.wav)
+        wav = _stretch(_trim(audio.wav), sample_rate, cfg.speech_rate)
         duration = len(wav) / sample_rate
         pieces.append(wav)
         timings.append(ChunkTiming(chunk.index, cursor, cursor + duration, chunk.text))
