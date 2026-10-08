@@ -73,6 +73,17 @@ class Synthesizer:
             self._model.model.to(device)
             self._model.device = torch.device(device)
 
+        # The speech tokenizer is NOT moved by the .to() above: it is a plain
+        # object holding its own model, not a registered submodule. See
+        # Config.decoder_device for why that matters.
+        tokenizer = getattr(self._model.model, "speech_tokenizer", None)
+        if tokenizer is not None and getattr(tokenizer, "model", None) is not None:
+            if self.cfg.decoder_device == "model" and device != "cpu":
+                tokenizer.model.to(device)
+                tokenizer.device = torch.device(device)
+            params = next(tokenizer.model.parameters())
+            log.info("speech tokenizer (decoder) on %s, %s", params.device, params.dtype)
+
         if self.cfg.is_clone:
             if not self.cfg.ref_audio:
                 raise ValueError("voice_mode='clone' requires ref_audio")

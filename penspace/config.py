@@ -57,6 +57,16 @@ class Config:
     # All "auto": cuda -> mps -> cpu, with a matching dtype and attention
     # backend. See runtime.py.
     device: str = "auto"
+    # Where the speech tokenizer — the 154M-parameter decoder that turns the
+    # model's codes into a waveform — runs. "cpu" is what every render so far
+    # has done, not by choice: the model is loaded on the CPU and only its
+    # language model is moved to the GPU, because the tokenizer is held as a
+    # plain attribute rather than a registered submodule and .to() skips it.
+    # On a CUDA pod that leaves it decoding on the CPU in bfloat16, which the
+    # pod's Zen 3 CPU has no native support for. "model" moves it to wherever
+    # the language model is. Left at "cpu" until a benchmark on the pod says
+    # otherwise (penspace.profile_decode).
+    decoder_device: str = "cpu"
     attn_implementation: str = "auto"
     dtype: str = "auto"
 
@@ -143,6 +153,7 @@ class Config:
         c.language = _env_str("PENSPACE_LANGUAGE", c.language)
         c.instruct = _env_str("PENSPACE_INSTRUCT", c.instruct)
         c.device = _env_str("PENSPACE_DEVICE", c.device)
+        c.decoder_device = _env_str("PENSPACE_DECODER_DEVICE", c.decoder_device)
         c.attn_implementation = _env_str("PENSPACE_ATTN", c.attn_implementation)
         c.dtype = _env_str("PENSPACE_DTYPE", c.dtype)
         # Pinning the reference transcript keeps render ids stable across
