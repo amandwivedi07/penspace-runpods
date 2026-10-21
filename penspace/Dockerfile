@@ -61,6 +61,11 @@ ENV PENSPACE_ATTN=sdpa
 # Mount a volume at /models instead; the first run populates it and every pod
 # after that starts immediately.
 
+# The commit this image was built from, recorded with every render so a
+# chapter can always be traced back to the code that narrated it.
+ARG GIT_SHA=unknown
+ENV PENSPACE_RENDERER_VERSION=$GIT_SHA
+
 COPY penspace /app/penspace
 # The reference recording for voice cloning, baked in so the voice cannot drift
 # between pods and so a pod needs no volume mounted just to hold one small file.
