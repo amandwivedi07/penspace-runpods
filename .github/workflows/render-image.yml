@@ -66,6 +66,8 @@ jobs:
           file: penspace/Dockerfile
           platforms: linux/amd64
           push: true
+          build-args: |
+            GIT_SHA=${{ github.sha }}
           tags: |
             ghcr.io/${{ steps.meta.outputs.repo }}/render:latest
             ghcr.io/${{ steps.meta.outputs.repo }}/render:${{ github.sha }}

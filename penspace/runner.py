@@ -7,9 +7,11 @@ matters because you are paying per second for the GPU.
 
 from __future__ import annotations
 
+import datetime
 import hashlib
 import json
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -55,6 +57,10 @@ class RenderResult:
     failed_chunks: List[int] = field(default_factory=list)
     max_wer: float = 0.0
     skipped: bool = False
+    # What produced this audio, so the backend can keep a track record of
+    # which book was narrated with which pauses, speed, voice and build.
+    render_settings: Dict = field(default_factory=dict)
+    rendered_at: Optional[str] = None
 
     def to_dict(self) -> dict:
         return {
@@ -66,6 +72,8 @@ class RenderResult:
             "timing_key": self.timing_key,
             "failed_chunks": self.failed_chunks,
             "max_wer": round(self.max_wer, 4),
+            "render_settings": self.render_settings,
+            "rendered_at": self.rendered_at,
         }
 
 
@@ -178,6 +186,34 @@ class Runner:
         self.storage = storage
         self.synth = Synthesizer(cfg)
         self.qa = QAGate(cfg) if cfg.qa_enabled else None
+
+    def _render_settings(self, language: str) -> Dict:
+        """Everything that shapes how a chapter sounds, recorded with it.
+
+        Deliberately a superset of the render id: pauses and speed are not in
+        the id yet, which is exactly why they have to be written down here.
+        """
+        c = self.cfg
+        fingerprint = _reference_fingerprint(c)
+        return {
+            "model": c.active_model_path,
+            "voice_ref": os.path.basename(c.ref_audio) if c.ref_audio else None,
+            "voice_ref_sha": fingerprint.split(":", 1)[0] if fingerprint else None,
+            "language": language,
+            "sentence_gap_ms": c.sentence_gap_ms,
+            "paragraph_gap_ms": c.paragraph_gap_ms,
+            "heading_lead_gap_ms": c.heading_lead_gap_ms,
+            "heading_gap_ms": c.heading_gap_ms,
+            "lead_in_ms": c.lead_in_ms,
+            "tail_ms": c.tail_ms,
+            "speech_rate": c.speech_rate,
+            "target_lufs": c.target_lufs,
+            "bitrate": c.bitrate,
+            "batch_size": c.batch_size,
+            "decoder_device": c.decoder_device,
+            # Baked into the image at build time (Dockerfile ARG GIT_SHA).
+            "renderer_version": os.environ.get("PENSPACE_RENDERER_VERSION") or "unknown",
+        }
 
     def _render_id(self, normalized_text: str, language: str) -> str:
         """Identity of this render: change the text or the voice, get a new id."""
@@ -348,6 +384,8 @@ class Runner:
                 audio_key=audio_key,
                 timing_key=timing_key,
                 skipped=True,
+                render_settings=existing.get("settings") or self._render_settings(language),
+                rendered_at=existing.get("rendered_at"),
             )
 
         log.info("%s: %d chunks (render %s)", job.id, len(chunks), render_id)
@@ -377,6 +415,8 @@ class Runner:
         audio_mod.encode(
             wav, sample_rate, audio_path, self.cfg, title=job.title, artist=job.author
         )
+        settings = self._render_settings(language)
+        rendered_at = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
         audio_mod.write_timing_map(
             timings,
             timing_path,
@@ -393,6 +433,8 @@ class Runner:
                     "instruct": self.cfg.instruct,
                 },
                 "sample_rate": sample_rate,
+                "settings": settings,
+                "rendered_at": rendered_at,
             },
         )
 
@@ -426,6 +468,8 @@ class Runner:
             timing_key=timing_key,
             failed_chunks=failed,
             max_wer=worst_wer,
+            render_settings=settings,
+            rendered_at=rendered_at,
         )
 
     def _log_stages(self, job_id, render_id, text, chunk_count, duration, stages, wall):
